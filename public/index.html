@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>集合竞价主力监控</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .rise { color: #f5222d; }
+        .fall { color: #52c41a; }
+        .loading { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- 顶部状态栏 -->
+    <div class="bg-blue-500 px-4 py-3">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span id="countdown" class="text-white text-base">计算中...</span>
+            </div>
+            <div id="statusBadge" class="px-3 py-1 rounded-full bg-gray-400">
+                <span class="text-white text-sm">检测中</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 控制栏 -->
+    <div class="bg-white px-4 py-3 border-b border-gray-200">
+        <div class="flex items-center gap-3">
+            <button id="monitorBtn" onclick="toggleMonitoring()" class="flex-1 bg-blue-500 text-white py-2 rounded-lg font-medium">
+                开始监控
+            </button>
+            <button onclick="fetchStockData()" class="px-4 py-2 border border-blue-500 text-blue-500 rounded-lg">
+                刷新
+            </button>
+        </div>
+    </div>
+
+    <!-- 股票列表 -->
+    <div id="stockList" class="p-4 pb-20 space-y-3">
+        <div class="flex flex-col items-center justify-center py-20">
+            <svg class="w-12 h-12 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+            </svg>
+            <p class="text-gray-400 text-lg mb-2">暂无数据</p>
+            <p class="text-gray-400 text-sm text-center">点击"开始监控"按钮<br/>获取主力资金数据</p>
+        </div>
+    </div>
+
+    <!-- 底部信息栏 -->
+    <div id="lastUpdate" class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2 hidden">
+        <p class="text-xs text-gray-500 text-center"></p>
+    </div>
+
+    <script>
+        let isMonitoring = false;
+        let monitorInterval = null;
+
+        // 格式化金额
+        function formatAmount(value) {
+            if (Math.abs(value) >= 100000000) {
+                return (value / 100000000).toFixed(2) + '亿';
+            } else if (Math.abs(value) >= 10000) {
+                return (value / 10000).toFixed(2) + '万';
+            }
+            return value.toFixed(2);
+        }
+
+        // 格式化涨跌幅
+        function formatChange(value) {
+            const sign = value >= 0 ? '+' : '';
+            return sign + value.toFixed(2) + '%';
+        }
+
+        // 判断是否在集合竞价时段
+        function checkCallAuctionTime() {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            const time = hours * 60 + minutes;
+            return time >= 9 * 60 + 15 && time <= 9 * 60 + 27;
+        }
+
+        // 计算倒计时
+        function calculateCountdown() {
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const callAuctionStart = new Date(today.getTime() + 9 * 60 * 60 * 1000 + 15 * 60 * 1000);
+            const callAuctionEnd = new Date(today.getTime() + 9 * 60 * 60 * 1000 + 27 * 60 * 1000);
+
+            if (now < callAuctionStart) {
+                const diff = callAuctionStart.getTime() - now.getTime();
+                const minutes = Math.floor(diff / 60000);
+                const seconds = Math.floor((diff % 60000) / 1000);
+                return `距离集合竞价开始 ${minutes}分${seconds}秒`;
+            } else if (now >= callAuctionStart && now <= callAuctionEnd) {
+                const diff = callAuctionEnd.getTime() - now.getTime();
+                const minutes = Math.floor(diff / 60000);
+                const seconds = Math.floor((diff % 60000) / 1000);
+                return `集合竞价中 ${minutes}分${seconds}秒`;
+            } else {
+                return '今日集合竞价已结束';
+            }
+        }
+
+        // 更新状态栏
+        function updateStatus() {
+            document.getElementById('countdown').textContent = calculateCountdown();
+            const badge = document.getElementById('statusBadge');
+            const isCallAuction = checkCallAuctionTime();
+            badge.className = `px-3 py-1 rounded-full ${isCallAuction ? 'bg-green-500' : 'bg-gray-400'}`;
+            badge.querySelector('span').textContent = isCallAuction ? '交易中' : '非交易时段';
+        }
+
+        // 获取股票数据
+        async function fetchStockData() {
+            const listEl = document.getElementById('stockList');
+            listEl.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-20">
+                    <svg class="w-8 h-8 text-blue-500 loading mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    <p class="text-gray-500">加载中...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch('/api/stock/main-inflow');
+                const result = await response.json();
+                
+                if (result.code === 200 && result.data) {
+                    renderStockList(result.data);
+                    updateLastUpdate();
+                } else {
+                    throw new Error('数据格式错误');
+                }
+            } catch (error) {
+                console.error('获取数据失败:', error);
+                listEl.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-20">
+                        <p class="text-red-500 mb-2">获取数据失败</p>
+                        <p class="text-gray-400 text-sm">请稍后重试</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 渲染股票列表
+        function renderStockList(stocks) {
+            const listEl = document.getElementById('stockList');
+            
+            if (stocks.length === 0) {
+                listEl.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-20">
+                        <p class="text-gray-400">暂无数据</p>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = stocks.map((stock, index) => `
+                <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center ${index < 3 ? 'bg-red-500' : 'bg-gray-300'}">
+                                <span class="text-white text-sm font-bold">${index + 1}</span>
+                            </div>
+                            <div>
+                                <p class="text-base font-semibold text-gray-900">${stock.code}</p>
+                                <p class="text-sm text-gray-600">${stock.name}</p>
+                            </div>
+                        </div>
+                        <div class="px-2 py-1 rounded ${stock.changePercent >= 0 ? 'bg-red-50' : 'bg-green-50'}">
+                            <span class="text-sm font-semibold ${stock.changePercent >= 0 ? 'rise' : 'fall'}">${formatChange(stock.changePercent)}</span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-gray-600">主力流入</span>
+                            <span class="text-xl font-bold ${stock.mainInflow >= 0 ? 'rise' : 'fall'}">
+                                ${stock.mainInflow >= 0 ? '+' : ''}${formatAmount(stock.mainInflow)}
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-600">流入占比</span>
+                            <span class="text-base font-semibold text-blue-500">${stock.inflowRatio.toFixed(2)}%</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                        <div>
+                            <p class="text-xs text-gray-500">现价</p>
+                            <p class="text-base font-semibold ${stock.changePercent >= 0 ? 'rise' : 'fall'}">¥${stock.price.toFixed(2)}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">成交额</p>
+                            <p class="text-base font-semibold text-gray-900">${formatAmount(stock.volume)}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">更新时间</p>
+                            <p class="text-sm text-gray-600">${stock.updateTime}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 更新最后更新时间
+        function updateLastUpdate() {
+            const el = document.getElementById('lastUpdate');
+            el.classList.remove('hidden');
+            el.querySelector('p').textContent = '最后更新时间：' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
+        }
+
+        // 切换监控状态
+        function toggleMonitoring() {
+            const btn = document.getElementById('monitorBtn');
+            
+            if (isMonitoring) {
+                isMonitoring = false;
+                btn.textContent = '开始监控';
+                btn.classList.remove('bg-red-500');
+                btn.classList.add('bg-blue-500');
+                if (monitorInterval) {
+                    clearInterval(monitorInterval);
+                    monitorInterval = null;
+                }
+            } else {
+                isMonitoring = true;
+                btn.textContent = '停止监控';
+                btn.classList.remove('bg-blue-500');
+                btn.classList.add('bg-red-500');
+                fetchStockData();
+                monitorInterval = setInterval(fetchStockData, 5000);
+            }
+        }
+
+        // 初始化
+        updateStatus();
+        setInterval(updateStatus, 1000);
+    </script>
+</body>
+</html>
