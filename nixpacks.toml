@@ -1,0 +1,17 @@
+# Nixpacks 配置 - 用于 Railway 自动构建
+
+# 安装 pnpm
+[nixpacks]
+version = "3"
+
+[phases.setup]
+nixPkgs = ["nodejs_18"]
+
+[phases.install]
+cmds = ["npm install -g pnpm", "pnpm install"]
+
+[phases.build]
+cmds = ["cd server && pnpm build"]
+
+[start]
+cmd = "cd server && pnpm start"
