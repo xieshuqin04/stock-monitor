@@ -1,9 +1,9 @@
 /**
  * Vercel Serverless Function - 股票主力资金API
- * 部署到 Vercel 后，访问 /api/stock/main-inflow 即可
+ * 使用 CommonJS 语法
  */
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // 设置 CORS 头
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
