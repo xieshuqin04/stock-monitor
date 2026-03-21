@@ -1,11 +1,16 @@
 {
   "buildCommand": "pnpm build:web",
   "outputDirectory": "dist-web",
-  "framework": null,
   "rewrites": [
+    { "source": "/api/stock/main-inflow", "destination": "/api/stock/main-inflow.js" }
+  ],
+  "headers": [
     {
       "source": "/api/(.*)",
-      "destination": "https://stock-monitor-api.onrender.com/api/$1"
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, OPTIONS" }
+      ]
     }
   ]
 }
