@@ -11,25 +11,27 @@ page {
 :root,
 page,
 root-portal {
-  --background: lab(100% 0 0);
-  --foreground: lab(2.75381% 0 0);
-  --card: lab(100% 0 0);
-  --card-foreground: lab(2.75381% 0 0);
-  --popover: lab(100% 0 0);
-  --popover-foreground: lab(2.75381% 0 0);
-  --primary: lab(7.78201% -0.0000149012 0);
-  --primary-foreground: lab(98.26% 0 0);
-  --secondary: lab(96.52% -0.0000298023 0.0000119209);
-  --secondary-foreground: lab(7.78201% -0.0000149012 0);
-  --muted: lab(96.52% -0.0000298023 0.0000119209);
-  --muted-foreground: lab(48.496% 0 0);
-  --accent: lab(96.52% -0.0000298023 0.0000119209);
-  --accent-foreground: lab(7.78201% -0.0000149012 0);
-  --destructive: lab(48.4493% 77.4328 61.5452);
-  --destructive-foreground: lab(96.4152% 3.22586 1.14673);
-  --border: lab(90.952% 0 -0.0000119209);
-  --input: lab(90.952% 0 -0.0000119209);
-  --ring: lab(66.128% -0.0000298023 0.0000119209);
+  --background: #f5f5f5;
+  --foreground: #262626;
+  --card: #ffffff;
+  --card-foreground: #262626;
+  --popover: #ffffff;
+  --popover-foreground: #262626;
+  --primary: #1890ff;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #262626;
+  --muted: #f5f5f5;
+  --muted-foreground: #8c8c8c;
+  --accent: #fa8c16;
+  --accent-foreground: #ffffff;
+  --destructive: #f5222d;
+  --destructive-foreground: #ffffff;
+  --border: #e8e8e8;
+  --input: #e8e8e8;
+  --ring: #1890ff;
+  --rise: #f5222d;
+  --fall: #52c41a;
   --sidebar: lab(98.26% 0 0);
   --sidebar-foreground: lab(2.75381% 0 0);
   --sidebar-primary: lab(7.78201% -0.0000149012 0);
