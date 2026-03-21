@@ -1,6 +1,9 @@
 {
-  "buildCommand": "pnpm build:web",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm install -g pnpm@9 && pnpm build:web",
   "outputDirectory": "dist-web",
+  "installCommand": "npm install -g pnpm@9 && pnpm install",
+  "framework": null,
   "rewrites": [
     { "source": "/api/stock/main-inflow", "destination": "/api/stock/main-inflow.js" }
   ],
