@@ -1,28 +1,81 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { StockDataDto } from './stock.dto'
 
 /**
  * 股票服务 - 提供主力资金流入数据
  * 
- * 注意：当前使用模拟数据演示功能
- * 如需对接真实数据，可替换为：
- * 1. 东方财富API
- * 2. 同花顺API
- * 3. 其他股票数据服务商API
+ * 当前提供两种模式：
+ * 1. 模拟数据模式（默认）：generateMockData()
+ * 2. 真实API模式：fetchRealData()
+ * 
+ * 要切换到真实数据，修改 getMainInflowRanking() 方法
  */
 @Injectable()
 export class StockService {
+  private readonly logger = new Logger(StockService.name)
+  private readonly useRealApi = false // 切换为 true 启用真实API
+  
   /**
    * 获取集合竞价时段主力资金流入最多的股票列表
    * 
    * @returns 主力流入排行榜数据
    */
   async getMainInflowRanking(): Promise<StockDataDto[]> {
+    if (this.useRealApi) {
+      return this.fetchRealData()
+    }
+    
     // 生成模拟数据（实际生产环境应替换为真实API调用）
     const mockData = this.generateMockData()
     
     // 按主力流入金额降序排序
     return mockData.sort((a, b) => b.mainInflow - a.mainInflow)
+  }
+
+  /**
+   * 从真实API获取数据（东方财富）
+   */
+  private async fetchRealData(): Promise<StockDataDto[]> {
+    try {
+      const url = 'http://push2.eastmoney.com/api/qt/clist/get'
+      
+      const params = new URLSearchParams({
+        pn: '1',
+        pz: '50',
+        po: '1',
+        np: '1',
+        ut: 'bd1d9ddb0198e00',
+        fltt: '2',
+        invt: '2',
+        fid: 'f62',
+        fs: 'b:MK0021',
+        fields: 'f12,f14,f2,f3,f62,f66,f6',
+      })
+
+      const response = await fetch(`${url}?${params}`)
+      const result = await response.json()
+
+      if (result.data && result.data.diff) {
+        return result.data.diff.map((item: any) => ({
+          code: item.f12,
+          name: item.f14,
+          price: item.f2 / 100,
+          changePercent: item.f3 / 100,
+          mainInflow: item.f62,
+          inflowRatio: item.f66 / 100,
+          volume: item.f6,
+          updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+        })).sort((a: StockDataDto, b: StockDataDto) => b.mainInflow - a.mainInflow)
+      }
+
+      // 如果真实API失败，降级到模拟数据
+      this.logger.warn('真实API无数据，使用模拟数据')
+      return this.generateMockData()
+    } catch (error) {
+      this.logger.error('获取真实数据失败:', error)
+      // 出错时使用模拟数据
+      return this.generateMockData()
+    }
   }
 
   /**
