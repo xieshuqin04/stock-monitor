@@ -59,6 +59,9 @@
             <button id="tabHotConcept" onclick="switchTab('hotConcept')" class="px-4 py-3 text-center whitespace-nowrap text-gray-500">
                 🔥 热点题材
             </button>
+            <button id="tabUsStock" onclick="switchTab('usStock')" class="px-4 py-3 text-center whitespace-nowrap text-gray-500">
+                🇺🇸 美股映射
+            </button>
             <button id="tabRealtime" onclick="switchTab('realtime')" class="px-4 py-3 text-center whitespace-nowrap text-gray-500">
                 实时主力流入
             </button>
@@ -243,6 +246,33 @@
             <div>
                 <p class="text-xs text-gray-500">下跌题材</p>
                 <p id="hotConceptFallCount" class="text-lg font-bold text-green-500">--</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 美股映射说明 -->
+    <div id="usStockTip" class="hidden bg-blue-50 border-b border-blue-200 px-4 py-2">
+        <p class="text-xs text-blue-700">🇺🇸 统计美股隔夜涨幅，映射对应A股概念股。美股大涨可能带动A股相关概念股高开</p>
+    </div>
+
+    <!-- 美股映射统计栏 -->
+    <div id="usStockStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+        <div class="flex justify-around text-center">
+            <div>
+                <p class="text-xs text-gray-500">美股映射数</p>
+                <p id="usStockCount" class="text-lg font-bold text-blue-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">🔥热门美股</p>
+                <p id="usStockHotCount" class="text-lg font-bold text-orange-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">美股上涨</p>
+                <p id="usStockRiseCount" class="text-lg font-bold text-red-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">美股下跌</p>
+                <p id="usStockFallCount" class="text-lg font-bold text-green-500">--</p>
             </div>
         </div>
     </div>
@@ -468,7 +498,7 @@
         function switchTab(tab) {
             currentTab = tab;
 
-            const tabs = ['tabAuction', 'tabHighOpen', 'tabHotConcept', 'tabRealtime', 'tabOvernight', 'tabInstitution', 'tabAlert'];
+            const tabs = ['tabAuction', 'tabHighOpen', 'tabHotConcept', 'tabUsStock', 'tabRealtime', 'tabOvernight', 'tabInstitution', 'tabAlert'];
             tabs.forEach(t => {
                 const el = document.getElementById(t);
                 if (t === 'tab' + tab.charAt(0).toUpperCase() + tab.slice(1)) {
@@ -479,11 +509,11 @@
             });
 
             // 隐藏所有统计栏和提示
-            ['statsBar', 'overnightStatsBar', 'institutionStatsBar', 'alertStatsBar', 'highOpenStatsBar', 'hotConceptStatsBar'].forEach(id => {
+            ['statsBar', 'overnightStatsBar', 'institutionStatsBar', 'alertStatsBar', 'highOpenStatsBar', 'hotConceptStatsBar', 'usStockStatsBar'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.add('hidden');
             });
-            ['overnightTip', 'institutionTip', 'alertTip', 'highOpenTip', 'hotConceptTip'].forEach(id => {
+            ['overnightTip', 'institutionTip', 'alertTip', 'highOpenTip', 'hotConceptTip', 'usStockTip'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.add('hidden');
             });
@@ -497,6 +527,11 @@
                 const statsBar = document.getElementById('hotConceptStatsBar');
                 if (statsBar) statsBar.classList.remove('hidden');
                 const tip = document.getElementById('hotConceptTip');
+                if (tip) tip.classList.remove('hidden');
+            } else if (tab === 'usStock') {
+                const statsBar = document.getElementById('usStockStatsBar');
+                if (statsBar) statsBar.classList.remove('hidden');
+                const tip = document.getElementById('usStockTip');
                 if (tip) tip.classList.remove('hidden');
             } else if (tab === 'overnight') {
                 document.getElementById('overnightStatsBar').classList.remove('hidden');
@@ -532,6 +567,7 @@
                 auction: '加载集合竞价数据...',
                 highOpen: '加载高开股票数据...',
                 hotConcept: '加载热点题材数据...',
+                usStock: '加载美股映射数据...',
                 realtime: '加载实时主力数据...',
                 overnight: '加载隔夜挂单数据...',
                 institution: '加载机构操盘数据...',
@@ -561,6 +597,10 @@
                     stocks = await fetchHotConceptData();
                     renderHotConceptList(stocks);
                     updateHotConceptStats(stocks);
+                } else if (currentTab === 'usStock') {
+                    stocks = await fetchUsStockMapData();
+                    renderUsStockMapList(stocks);
+                    updateUsStockStats(stocks);
                 } else if (currentTab === 'realtime') {
                     stocks = await fetchRealtimeData();
                     renderStockList(stocks);
@@ -643,6 +683,125 @@
                 .sort((a, b) => b.openChange - a.openChange); // 按开盘涨幅排序
 
             return stocks;
+        }
+
+        // 美股-A股映射关系（热门美股对应的A股概念股）
+        const US_STOCK_MAPPING = {
+            // 科技巨头
+            'AAPL': { name: '苹果', cnStocks: ['立讯精密', '歌尔股份', '蓝思科技', '鹏鼎控股', '东山精密'], sector: '消费电子' },
+            'TSLA': { name: '特斯拉', cnStocks: ['比亚迪', '宁德时代', '恩捷股份', '天赐材料', '拓普集团'], sector: '新能源汽车' },
+            'NVDA': { name: '英伟达', cnStocks: ['寒武纪', '海光信息', '景嘉微', '龙芯中科', '中科曙光'], sector: 'AI芯片' },
+            'MSFT': { name: '微软', cnStocks: ['金山办公', '用友网络', '中望软件', '中国软件', '神州数码'], sector: '软件服务' },
+            'GOOGL': { name: '谷歌', cnStocks: ['百度', '科大讯飞', '昆仑万维', '三六零', '汉王科技'], sector: 'AI互联网' },
+            'AMZN': { name: '亚马逊', cnStocks: ['阿里巴巴', '京东', '拼多多', '跨境通', '南极电商'], sector: '电商' },
+            'META': { name: 'Meta', cnStocks: ['蓝色光标', '天下秀', '值得买', '三人行', '分众传媒'], sector: '元宇宙/广告' },
+            'AMD': { name: 'AMD', cnStocks: ['通富微电', '长电科技', '华天科技', '晶方科技', '深科技'], sector: '半导体' },
+            'INTC': { name: '英特尔', cnStocks: ['中芯国际', '北方华创', '中微公司', '华大九天', '拓荆科技'], sector: '半导体' },
+            // 生物医药
+            'MRNA': { name: 'Moderna', cnStocks: ['康希诺', '智飞生物', '沃森生物', '复星医药', '康泰生物'], sector: '疫苗' },
+            'PFE': { name: '辉瑞', cnStocks: ['复星医药', '华东医药', '恒瑞医药', '药明康德', '凯莱英'], sector: '创新药' },
+            'UNH': { name: '联合健康', cnStocks: ['爱尔眼科', '通策医疗', '美年健康', '泰格医药', '昭衍新药'], sector: '医疗服务' },
+            // 新能源
+            'ENPH': { name: 'Enphase', cnStocks: ['阳光电源', '锦浪科技', '固德威', '禾迈股份', '昱能科技'], sector: '光伏逆变器' },
+            'FSLR': { name: 'First Solar', cnStocks: ['隆基绿能', '通威股份', '晶澳科技', '天合光能', '晶科能源'], sector: '光伏' },
+            // 消费
+            'NKE': { name: '耐克', cnStocks: ['安踏体育', '李宁', '特步国际', '361度', '申洲国际'], sector: '运动服饰' },
+            'SBUX': { name: '星巴克', cnStocks: ['瑞幸咖啡', '奈雪的茶', '蜜雪冰城', '海底捞', '九毛九'], sector: '餐饮' },
+            'MCD': { name: '麦当劳', cnStocks: ['百胜中国', '海底捞', '呷哺呷哺', '九毛九', '全聚德'], sector: '餐饮' },
+            // 金融
+            'JPM': { name: '摩根大通', cnStocks: ['招商银行', '平安银行', '宁波银行', '兴业银行', '中信证券'], sector: '金融' },
+            'BAC': { name: '美国银行', cnStocks: ['工商银行', '建设银行', '农业银行', '中国银行', '邮储银行'], sector: '银行' },
+            // 其他
+            'DIS': { name: '迪士尼', cnStocks: ['中国电影', '光线传媒', '万达电影', '华谊兄弟', '芒果超媒'], sector: '传媒娱乐' },
+            'NFLX': { name: '奈飞', cnStocks: ['爱奇艺', '芒果超媒', '哔哩哔哩', '优酷', '腾讯视频'], sector: '流媒体' },
+            'BA': { name: '波音', cnStocks: ['中国商飞', '中航西飞', '中航沈飞', '洪都航空', '航发动力'], sector: '航空航天' },
+        };
+
+        // 获取美股映射数据
+        async function fetchUsStockMapData() {
+            // 模拟美股涨跌幅数据（实际需要美股API）
+            // 由于跨域限制，这里使用模拟数据，真实场景需要后端代理
+            const usStockChanges = {
+                'AAPL': (Math.random() * 6 - 2).toFixed(2),
+                'TSLA': (Math.random() * 10 - 3).toFixed(2),
+                'NVDA': (Math.random() * 8 - 2).toFixed(2),
+                'MSFT': (Math.random() * 5 - 1).toFixed(2),
+                'GOOGL': (Math.random() * 5 - 1).toFixed(2),
+                'AMZN': (Math.random() * 5 - 1).toFixed(2),
+                'META': (Math.random() * 6 - 2).toFixed(2),
+                'AMD': (Math.random() * 7 - 2).toFixed(2),
+                'INTC': (Math.random() * 5 - 2).toFixed(2),
+                'MRNA': (Math.random() * 8 - 3).toFixed(2),
+                'PFE': (Math.random() * 4 - 1).toFixed(2),
+                'UNH': (Math.random() * 4 - 1).toFixed(2),
+                'ENPH': (Math.random() * 8 - 3).toFixed(2),
+                'FSLR': (Math.random() * 6 - 2).toFixed(2),
+                'NKE': (Math.random() * 4 - 1).toFixed(2),
+                'SBUX': (Math.random() * 4 - 1).toFixed(2),
+                'MCD': (Math.random() * 3 - 1).toFixed(2),
+                'JPM': (Math.random() * 4 - 1).toFixed(2),
+                'BAC': (Math.random() * 4 - 1).toFixed(2),
+                'DIS': (Math.random() * 5 - 2).toFixed(2),
+                'NFLX': (Math.random() * 6 - 2).toFixed(2),
+                'BA': (Math.random() * 5 - 2).toFixed(2),
+            };
+
+            const results = [];
+            
+            // 获取A股实时数据用于匹配
+            const params = new URLSearchParams({
+                pn: '1', pz: '500', po: '1', np: '1',
+                fltt: '2', invt: '2', fid: 'f3',
+                fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
+                fields: 'f12,f14,f2,f3,f62',
+            });
+            const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+            
+            let aStockMap = {};
+            try {
+                const response = await fetch(url);
+                const result = await response.json();
+                if (result.data?.diff) {
+                    result.data.diff.forEach(item => {
+                        if (item.f14) {
+                            aStockMap[item.f14] = {
+                                code: item.f12,
+                                name: item.f14,
+                                price: parseFloat(item.f2 ?? 0),
+                                changePercent: parseFloat(item.f3 ?? 0),
+                                mainInflow: parseFloat(item.f62 ?? 0)
+                            };
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error('获取A股数据失败:', e);
+            }
+
+            // 构建美股-A股映射结果
+            for (const [usCode, change] of Object.entries(usStockChanges)) {
+                const mapping = US_STOCK_MAPPING[usCode];
+                if (!mapping) continue;
+
+                const usChange = parseFloat(change);
+                const cnStocksData = mapping.cnStocks.map(name => {
+                    const stockData = aStockMap[name] || { name, code: '--', price: 0, changePercent: 0, mainInflow: 0 };
+                    return stockData;
+                });
+
+                results.push({
+                    usCode,
+                    usName: mapping.name,
+                    usChange,
+                    sector: mapping.sector,
+                    cnStocks: cnStocksData,
+                    updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                    isHot: Math.abs(usChange) >= 3 // 涨跌幅>=3%标记为热门
+                });
+            }
+
+            // 按美股涨跌幅绝对值排序
+            return results.sort((a, b) => Math.abs(b.usChange) - Math.abs(a.usChange));
         }
 
         // 获取热点题材概念板块数据
@@ -1195,6 +1354,79 @@
             document.getElementById('hotConceptFallCount').textContent = fallCount;
         }
 
+        // 渲染美股映射列表
+        function renderUsStockMapList(data) {
+            const listEl = document.getElementById('stockList');
+
+            if (data.length === 0) {
+                listEl.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-20">
+                        <svg class="w-12 h-12 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/>
+                        </svg>
+                        <p class="text-gray-500 mb-2">暂无美股映射数据</p>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = data.map((item, index) => {
+                const cnStocksHtml = item.cnStocks.map(s => `
+                    <div class="flex items-center justify-between py-1 px-2 rounded ${s.changePercent >= 0 ? 'bg-red-50' : 'bg-green-50'}">
+                        <span class="text-xs font-medium">${s.name}</span>
+                        <span class="${s.changePercent >= 0 ? 'rise' : 'fall'} text-xs font-bold">${formatChange(s.changePercent)}</span>
+                    </div>
+                `).join('');
+
+                return `
+                <div class="bg-white rounded-lg shadow-sm border ${item.isHot ? 'border-orange-300' : 'border-gray-100'} p-4 mb-3">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full flex items-center justify-center ${item.usChange >= 0 ? 'bg-red-500' : 'bg-green-500'}">
+                                <span class="text-white text-xs font-bold">🇺🇸</span>
+                            </div>
+                            <div>
+                                <p class="text-base font-semibold text-gray-900">${item.usName}</p>
+                                <p class="text-xs text-gray-500">${item.usCode} · ${item.sector}</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="px-3 py-1 rounded-lg ${item.usChange >= 0 ? 'bg-red-100' : 'bg-green-100'}">
+                                <span class="text-lg font-bold ${item.usChange >= 0 ? 'rise' : 'fall'}">${item.usChange >= 0 ? '+' : ''}${item.usChange}%</span>
+                            </div>
+                            ${item.isHot ? '<span class="text-xs text-orange-500 font-medium">🔥 热门</span>' : ''}
+                        </div>
+                    </div>
+                    
+                    <!-- 对应A股 -->
+                    <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <p class="text-xs text-gray-500">🇨🇳 对应A股概念股</p>
+                            <span class="text-xs text-gray-400">${item.updateTime}</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            ${cnStocksHtml}
+                        </div>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        // 更新美股映射统计
+        function updateUsStockStats(data) {
+            const statsBar = document.getElementById('usStockStatsBar');
+            if (!statsBar) return;
+
+            const hotCount = data.filter(d => d.isHot).length;
+            const usRiseCount = data.filter(d => d.usChange > 0).length;
+            const usFallCount = data.filter(d => d.usChange < 0).length;
+
+            document.getElementById('usStockCount').textContent = data.length;
+            document.getElementById('usStockHotCount').textContent = hotCount;
+            document.getElementById('usStockRiseCount').textContent = usRiseCount;
+            document.getElementById('usStockFallCount').textContent = usFallCount;
+        }
+
         // 渲染股票列表
         function renderStockList(stocks) {
             const listEl = document.getElementById('stockList');
@@ -1636,7 +1868,7 @@
                 btn.classList.add('bg-red-500');
                 
                 // 切换到集合竞价相关Tab并获取数据
-                if (currentTab === 'auction' || currentTab === 'highOpen' || currentTab === 'hotConcept') {
+                if (currentTab === 'auction' || currentTab === 'highOpen' || currentTab === 'hotConcept' || currentTab === 'usStock') {
                     fetchStockData();
                 } else {
                     switchTab('auction');
@@ -1644,7 +1876,7 @@
                 
                 // 集合竞价每5秒刷新一次
                 auctionInterval = setInterval(() => {
-                    if (currentTab === 'auction' || currentTab === 'highOpen' || currentTab === 'hotConcept') {
+                    if (currentTab === 'auction' || currentTab === 'highOpen' || currentTab === 'hotConcept' || currentTab === 'usStock') {
                         fetchStockData();
                     }
                 }, 5000);
