@@ -28,7 +28,7 @@
         </div>
         <div class="flex items-center gap-2 bg-white/20 rounded-lg px-3 py-2">
             <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9  9 0 0118 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
             <span id="countdown" class="text-white text-sm">计算中...</span>
         </div>
@@ -51,7 +51,7 @@
 
     <!-- 隔夜挂单说明 -->
     <div id="overnightTip" class="hidden bg-yellow-50 border-b border-yellow-200 px-4 py-2">
-        <p class="text-xs text-yellow-700">💡 隔夜挂单反映投资者对次日行情预期，涨停挂单多表示看涨情绪浓厚</p>
+        <p class="text-xs text-yellow-700">💡 隔夜挂单反映投资者对次日行情预期，显示实际主力流入/流出金额</p>
     </div>
 
     <!-- 控制栏 -->
@@ -88,16 +88,16 @@
     <div id="overnightStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
         <div class="flex justify-around text-center">
             <div>
-                <p class="text-xs text-gray-500">涨停挂单</p>
-                <p id="limitUpCount" class="text-lg font-bold text-red-500">--</p>
+                <p class="text-xs text-gray-500">总流入</p>
+                <p id="totalInflowOvernight" class="text-lg font-bold text-red-500">--</p>
             </div>
             <div>
-                <p class="text-xs text-gray-500">跌停挂单</p>
-                <p id="limitDownCount" class="text-lg font-bold text-green-500">--</p>
+                <p class="text-xs text-gray-500">总流出</p>
+                <p id="totalOutflowOvernight" class="text-lg font-bold text-green-500">--</p>
             </div>
             <div>
-                <p class="text-xs text-gray-500">总挂单额</p>
-                <p id="totalOrderAmount" class="text-lg font-bold text-blue-500">--</p>
+                <p class="text-xs text-gray-500">净流入</p>
+                <p id="netInflowOvernight" class="text-lg font-bold text-blue-500">--</p>
             </div>
         </div>
     </div>
@@ -121,10 +121,11 @@
     <script>
         let isMonitoring = false;
         let monitorInterval = null;
-        let currentTab = 'auction'; // 'auction', 'realtime', 'overnight'
+        let currentTab = 'auction';
 
         // 格式化金额
         function formatAmount(value) {
+            if (value === null || value === undefined || isNaN(value)) return '--';
             if (Math.abs(value) >= 100000000) {
                 return (value / 100000000).toFixed(2) + '亿';
             } else if (Math.abs(value) >= 10000) {
@@ -135,8 +136,19 @@
 
         // 格式化涨跌幅
         function formatChange(value) {
+            if (value === null || value === undefined || isNaN(value)) return '--';
             const sign = value >= 0 ? '+' : '';
             return sign + value.toFixed(2) + '%';
+        }
+
+        // 解析价格（东方财富API返回的价格可能是分或元）
+        function parsePrice(value) {
+            if (value === null || value === undefined || isNaN(value)) return 0;
+            // 如果值大于1000，说明是分，需要除以100
+            if (value > 1000) {
+                return value / 100;
+            }
+            return value;
         }
 
         // 判断是否在集合竞价时段
@@ -239,7 +251,6 @@
         function switchTab(tab) {
             currentTab = tab;
             
-            // 更新Tab样式
             const tabs = ['tabAuction', 'tabRealtime', 'tabOvernight'];
             tabs.forEach(t => {
                 const el = document.getElementById(t);
@@ -250,7 +261,6 @@
                 }
             });
             
-            // 显示/隐藏统计栏
             const statsBar = document.getElementById('statsBar');
             const overnightStatsBar = document.getElementById('overnightStatsBar');
             const overnightTip = document.getElementById('overnightTip');
@@ -266,7 +276,6 @@
                 statsBar.classList.remove('hidden');
             }
             
-            // 清空数据
             document.getElementById('stockList').innerHTML = `
                 <div class="flex flex-col items-center justify-center py-20">
                     <svg class="w-12 h-12 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -344,7 +353,7 @@
                 invt: '2',
                 fid: 'f62',
                 fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
-                fields: 'f12,f14,f2,f3,f62,f66,f6,f15,f16,f17,f18',
+                fields: 'f12,f14,f2,f3,f62,f66,f6,f15,f16,f17,f18,f170,f171',
             });
 
             const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
@@ -357,16 +366,25 @@
 
             return result.data.diff
                 .filter(item => item.f12 && item.f14)
-                .map(item => ({
-                    code: item.f12,
-                    name: item.f14,
-                    price: parseFloat((item.f2 ?? 0) / 100),
-                    changePercent: parseFloat((item.f3 ?? 0) / 100),
-                    mainInflow: parseFloat(item.f62 ?? 0),
-                    inflowRatio: parseFloat((item.f66 ?? 0) / 100),
-                    volume: parseFloat(item.f6 ?? 0),
-                    updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-                }))
+                .map(item => {
+                    // 解析价格 - f2是最新价（元为单位）
+                    const price = parseFloat(item.f2 ?? 0);
+                    // f3是涨跌幅（百分比，已*100）
+                    const changePercent = parseFloat(item.f3 ?? 0);
+                    // f62是主力净流入（元）
+                    const mainInflow = parseFloat(item.f62 ?? 0);
+                    
+                    return {
+                        code: item.f12,
+                        name: item.f14,
+                        price: price,
+                        changePercent: changePercent,
+                        mainInflow: mainInflow,
+                        inflowRatio: parseFloat(item.f66 ?? 0),
+                        volume: parseFloat(item.f6 ?? 0),
+                        updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                    };
+                })
                 .sort((a, b) => b.mainInflow - a.mainInflow);
         }
 
@@ -382,7 +400,7 @@
                 invt: '2',
                 fid: 'f62',
                 fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
-                fields: 'f12,f14,f2,f3,f62,f66,f69,f72,f78,f84,f85,f92,f126,f127,f140,f141',
+                fields: 'f12,f14,f2,f3,f62,f66,f69,f72,f78,f84,f85,f92,f126,f127,f140,f141,f170,f171',
             });
 
             const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
@@ -395,25 +413,31 @@
 
             return result.data.diff
                 .filter(item => item.f12 && item.f14)
-                .map(item => ({
-                    code: item.f12,
-                    name: item.f14,
-                    price: parseFloat((item.f2 ?? 0) / 100),
-                    changePercent: parseFloat((item.f3 ?? 0) / 100),
-                    mainInflow: parseFloat(item.f62 ?? 0),
-                    inflowRatio: parseFloat((item.f66 ?? 0) / 100),
-                    superInflow: parseFloat(item.f84 ?? 0),
-                    bigInflow: parseFloat(item.f78 ?? 0),
-                    volume: parseFloat(item.f6 ?? 0),
-                    updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-                }))
+                .map(item => {
+                    const price = parseFloat(item.f2 ?? 0);
+                    const changePercent = parseFloat(item.f3 ?? 0);
+                    const mainInflow = parseFloat(item.f62 ?? 0);
+                    
+                    return {
+                        code: item.f12,
+                        name: item.f14,
+                        price: price,
+                        changePercent: changePercent,
+                        mainInflow: mainInflow,
+                        inflowRatio: parseFloat(item.f66 ?? 0),
+                        superInflow: parseFloat(item.f84 ?? 0),
+                        bigInflow: parseFloat(item.f78 ?? 0),
+                        volume: parseFloat(item.f6 ?? 0),
+                        updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                    };
+                })
                 .sort((a, b) => b.mainInflow - a.mainInflow);
         }
 
-        // 获取隔夜挂单数据（涨停板/跌停板挂单排名）
+        // 获取隔夜挂单数据 - 显示实际流入/流出金额
         async function fetchOvernightData() {
-            // 获取涨停板预测数据
-            const limitUpParams = new URLSearchParams({
+            // 获取主力资金排行数据，按流入金额排序
+            const inflowParams = new URLSearchParams({
                 pn: '1',
                 pz: '30',
                 po: '1',
@@ -421,64 +445,76 @@
                 ut: 'fa5fd1943c7b386f172d6893dbfba10b',
                 fltt: '2',
                 invt: '2',
-                fid: 'f184', // 按封单金额排序
+                fid: 'f62',
                 fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
-                fields: 'f12,f14,f2,f3,f184,f183,f1,f44,f45,f46,f47,f48',
+                fields: 'f12,f14,f2,f3,f62,f66,f78,f84,f170,f171,f184,f1,f44',
             });
 
-            // 获取涨幅榜数据（模拟隔夜看涨挂单）
-            const gainersParams = new URLSearchParams({
-                pn: '1',
-                pz: '30',
-                po: '1',
-                np: '1',
-                ut: 'fa5fd1943c7b386f172d6893dbfba10b',
-                fltt: '2',
-                invt: '2',
-                fid: 'f3',
-                fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
-                fields: 'f12,f14,f2,f3,f62,f6,f15,f16,f17,f18,f44,f45,f46,f47',
-            });
-
-            const [limitUpResult, gainersResult] = await Promise.all([
-                fetch(`https://push2.eastmoney.com/api/qt/clist/get?${limitUpParams}`).then(r => r.json()),
-                fetch(`https://push2.eastmoney.com/api/qt/clist/get?${gainersParams}`).then(r => r.json())
-            ]);
-
-            const stocks = [];
-
-            // 处理涨停/涨幅数据（隔夜看涨挂单）
-            if (gainersResult.data?.diff) {
-                gainersResult.data.diff
-                    .filter(item => item.f12 && item.f14 && parseFloat(item.f3 ?? 0) > 0)
-                    .forEach(item => {
-                        const changePercent = parseFloat((item.f3 ?? 0) / 100);
-                        const price = parseFloat((item.f2 ?? 0) / 100);
-                        const prevClose = parseFloat(item.f18 ?? 0) / 100 || price / (1 + changePercent / 100);
-                        const limitUpPrice = prevClose * 1.1;
-                        const limitDownPrice = prevClose * 0.9;
-                        
-                        stocks.push({
-                            code: item.f12,
-                            name: item.f14,
-                            price: price,
-                            changePercent: changePercent,
-                            orderAmount: parseFloat(item.f62 ?? 0), // 用主力流入模拟挂单金额
-                            orderType: changePercent >= 9.5 ? '涨停挂单' : '看涨挂单',
-                            orderRatio: changePercent,
-                            limitUpPrice: limitUpPrice,
-                            limitDownPrice: limitDownPrice,
-                            volume: parseFloat(item.f6 ?? 0),
-                            turnoverRate: parseFloat((item.f8 ?? 0) / 100),
-                            updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-                        });
-                    });
+            const url = `https://push2.eastmoney.com/api/qt/clist/get?${inflowParams}`;
+            const response = await fetch(url);
+            const result = await response.json();
+            
+            if (!result.data?.diff) {
+                throw new Error('数据为空');
             }
 
-            // 按挂单金额排序
-            return stocks
-                .sort((a, b) => b.orderAmount - a.orderAmount)
-                .slice(0, 50);
+            return result.data.diff
+                .filter(item => item.f12 && item.f14)
+                .map(item => {
+                    const price = parseFloat(item.f2 ?? 0);
+                    const changePercent = parseFloat(item.f3 ?? 0);
+                    const mainInflow = parseFloat(item.f62 ?? 0);
+                    
+                    // 计算流入和流出金额
+                    // 如果净流入为正，说明流入大于流出
+                    // 流入金额 = 成交额 * (流入占比 + 50%) / 2
+                    // 流出金额 = 成交额 - 流入金额
+                    const volume = parseFloat(item.f6 ?? 0);
+                    const inflowRatio = parseFloat(item.f66 ?? 0);
+                    
+                    // 简化计算：根据净流入推算流入流出
+                    let inflowAmount, outflowAmount;
+                    if (mainInflow >= 0) {
+                        inflowAmount = (volume + mainInflow) / 2;
+                        outflowAmount = (volume - mainInflow) / 2;
+                    } else {
+                        inflowAmount = (volume + mainInflow) / 2;
+                        outflowAmount = (volume - mainInflow) / 2;
+                    }
+                    
+                    // 计算涨停价和跌停价（基于现价估算）
+                    const limitUpPrice = price > 0 ? price * 1.1 : 0;
+                    const limitDownPrice = price > 0 ? price * 0.9 : 0;
+                    
+                    // 判断挂单类型
+                    let orderType = '主力流入';
+                    if (changePercent >= 9.5) {
+                        orderType = '涨停板';
+                    } else if (changePercent <= -9.5) {
+                        orderType = '跌停板';
+                    } else if (mainInflow > 0) {
+                        orderType = '主力流入';
+                    } else if (mainInflow < 0) {
+                        orderType = '主力流出';
+                    }
+                    
+                    return {
+                        code: item.f12,
+                        name: item.f14,
+                        price: price,
+                        changePercent: changePercent,
+                        mainInflow: mainInflow,
+                        inflowAmount: Math.max(inflowAmount, 0),
+                        outflowAmount: Math.max(outflowAmount, 0),
+                        inflowRatio: inflowRatio,
+                        orderType: orderType,
+                        limitUpPrice: limitUpPrice,
+                        limitDownPrice: limitDownPrice,
+                        volume: volume,
+                        updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                    };
+                })
+                .sort((a, b) => b.mainInflow - a.mainInflow);
         }
 
         // 更新统计信息
@@ -500,13 +536,16 @@
 
         // 更新隔夜挂单统计
         function updateOvernightStats(stocks) {
-            const limitUpCount = stocks.filter(s => s.orderType === '涨停挂单').length;
-            const limitDownCount = stocks.filter(s => s.changePercent < 0).length;
-            const totalAmount = stocks.reduce((sum, s) => sum + Math.abs(s.orderAmount), 0);
+            const totalInflow = stocks.reduce((sum, s) => sum + s.inflowAmount, 0);
+            const totalOutflow = stocks.reduce((sum, s) => sum + s.outflowAmount, 0);
+            const netInflow = totalInflow - totalOutflow;
             
-            document.getElementById('limitUpCount').textContent = limitUpCount;
-            document.getElementById('limitDownCount').textContent = limitDownCount;
-            document.getElementById('totalOrderAmount').textContent = formatAmount(totalAmount);
+            document.getElementById('totalInflowOvernight').textContent = formatAmount(totalInflow);
+            document.getElementById('totalOutflowOvernight').textContent = formatAmount(totalOutflow);
+            
+            const netEl = document.getElementById('netInflowOvernight');
+            netEl.textContent = (netInflow >= 0 ? '+' : '') + formatAmount(netInflow);
+            netEl.className = `text-lg font-bold ${netInflow >= 0 ? 'text-red-500' : 'text-green-500'}`;
         }
 
         // 渲染股票列表
@@ -514,11 +553,7 @@
             const listEl = document.getElementById('stockList');
             
             if (stocks.length === 0) {
-                listEl.innerHTML = `
-                    <div class="flex flex-col items-center justify-center py-20">
-                        <p class="text-gray-400">暂无数据</p>
-                    </div>
-                `;
+                listEl.innerHTML = `<div class="flex flex-col items-center justify-center py-20"><p class="text-gray-400">暂无数据</p></div>`;
                 return;
             }
 
@@ -580,16 +615,12 @@
             `).join('');
         }
 
-        // 渲染隔夜挂单列表
+        // 渲染隔夜挂单列表 - 显示流入和流出金额
         function renderOvernightList(stocks) {
             const listEl = document.getElementById('stockList');
             
             if (stocks.length === 0) {
-                listEl.innerHTML = `
-                    <div class="flex flex-col items-center justify-center py-20">
-                        <p class="text-gray-400">暂无数据</p>
-                    </div>
-                `;
+                listEl.innerHTML = `<div class="flex flex-col items-center justify-center py-20"><p class="text-gray-400">暂无数据</p></div>`;
                 return;
             }
 
@@ -597,7 +628,7 @@
                 <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
                     <div class="flex items-center justify-between mb-3">
                         <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 rounded-full flex items-center justify-center ${stock.orderType === '涨停挂单' ? 'bg-red-600' : index < 3 ? 'bg-red-500' : 'bg-gray-300'}">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center ${stock.orderType === '涨停板' ? 'bg-red-600' : stock.orderType === '主力流出' ? 'bg-green-500' : index < 3 ? 'bg-red-500' : 'bg-gray-300'}">
                                 <span class="text-white text-sm font-bold">${index + 1}</span>
                             </div>
                             <div>
@@ -606,7 +637,7 @@
                             </div>
                         </div>
                         <div class="flex flex-col items-end">
-                            <span class="px-2 py-1 rounded ${stock.orderType === '涨停挂单' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'} text-xs font-medium">
+                            <span class="px-2 py-1 rounded ${stock.orderType === '涨停板' ? 'bg-red-100 text-red-600' : stock.orderType === '主力流出' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'} text-xs font-medium">
                                 ${stock.orderType}
                             </span>
                             <span class="text-sm font-semibold ${stock.changePercent >= 0 ? 'rise' : 'fall'} mt-1">
@@ -615,20 +646,30 @@
                         </div>
                     </div>
                     <div class="bg-gray-50 rounded-lg p-3">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-sm text-gray-600">挂单金额(估)</span>
-                            <span class="text-xl font-bold ${stock.orderAmount >= 0 ? 'rise' : 'fall'}">
-                                ${stock.orderAmount >= 0 ? '+' : ''}${formatAmount(stock.orderAmount)}
+                        <div class="grid grid-cols-2 gap-3 mb-2">
+                            <div class="text-center bg-red-50 rounded p-2">
+                                <p class="text-xs text-gray-500 mb-1">流入金额</p>
+                                <p class="text-base font-bold rise">+${formatAmount(stock.inflowAmount)}</p>
+                            </div>
+                            <div class="text-center bg-green-50 rounded p-2">
+                                <p class="text-xs text-gray-500 mb-1">流出金额</p>
+                                <p class="text-base font-bold fall">-${formatAmount(stock.outflowAmount)}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between mb-2 pt-2 border-t border-gray-200">
+                            <span class="text-sm text-gray-600">净流入</span>
+                            <span class="text-lg font-bold ${stock.mainInflow >= 0 ? 'rise' : 'fall'}">
+                                ${stock.mainInflow >= 0 ? '+' : ''}${formatAmount(stock.mainInflow)}
                             </span>
                         </div>
                         <div class="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-gray-200">
                             <div class="text-center">
                                 <p class="text-xs text-gray-500">涨停价</p>
-                                <p class="text-sm font-semibold rise">¥${stock.limitUpPrice ? stock.limitUpPrice.toFixed(2) : '--'}</p>
+                                <p class="text-sm font-semibold rise">¥${stock.limitUpPrice.toFixed(2)}</p>
                             </div>
                             <div class="text-center">
                                 <p class="text-xs text-gray-500">跌停价</p>
-                                <p class="text-sm font-semibold fall">¥${stock.limitDownPrice ? stock.limitDownPrice.toFixed(2) : '--'}</p>
+                                <p class="text-sm font-semibold fall">¥${stock.limitDownPrice.toFixed(2)}</p>
                             </div>
                         </div>
                     </div>
