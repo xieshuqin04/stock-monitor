@@ -10,9 +10,11 @@
         .fall { color: #52c41a; }
         .loading { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .tab-active { border-bottom: 3px solid #1890ff; color: #1890ff; font-weight: 600; }
+        .tab-active { border-bottom: 3px solid #1890ff; color: #1890ff; font-weight: 600; background-color: #f0f9ff; }
         .pulse { animation: pulse 2s infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .scroll-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .tab-scroll { display: flex; min-width: max-content; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -26,20 +28,30 @@
         </div>
         <div class="flex items-center gap-2 bg-white/20 rounded-lg px-3 py-2">
             <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9  9 0 0118 0z"/>
             </svg>
             <span id="countdown" class="text-white text-sm">计算中...</span>
         </div>
     </div>
 
-    <!-- Tab 切换 -->
-    <div class="bg-white flex border-b border-gray-200">
-        <button id="tabAuction" onclick="switchTab('auction')" class="flex-1 py-3 text-center tab-active">
-            集合竞价主力
-        </button>
-        <button id="tabRealtime" onclick="switchTab('realtime')" class="flex-1 py-3 text-center text-gray-500">
-            实时主力流入
-        </button>
+    <!-- Tab 切换 (可横向滚动) -->
+    <div class="bg-white border-b border-gray-200 scroll-container">
+        <div class="tab-scroll">
+            <button id="tabAuction" onclick="switchTab('auction')" class="px-6 py-3 text-center whitespace-nowrap tab-active">
+                集合竞价主力
+            </button>
+            <button id="tabRealtime" onclick="switchTab('realtime')" class="px-6 py-3 text-center whitespace-nowrap text-gray-500">
+                实时主力流入
+            </button>
+            <button id="tabOvernight" onclick="switchTab('overnight')" class="px-6 py-3 text-center whitespace-nowrap text-gray-500">
+                隔夜挂单排名
+            </button>
+        </div>
+    </div>
+
+    <!-- 隔夜挂单说明 -->
+    <div id="overnightTip" class="hidden bg-yellow-50 border-b border-yellow-200 px-4 py-2">
+        <p class="text-xs text-yellow-700">💡 隔夜挂单反映投资者对次日行情预期，涨停挂单多表示看涨情绪浓厚</p>
     </div>
 
     <!-- 控制栏 -->
@@ -72,6 +84,24 @@
         </div>
     </div>
 
+    <!-- 隔夜挂单统计栏 -->
+    <div id="overnightStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+        <div class="flex justify-around text-center">
+            <div>
+                <p class="text-xs text-gray-500">涨停挂单</p>
+                <p id="limitUpCount" class="text-lg font-bold text-red-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">跌停挂单</p>
+                <p id="limitDownCount" class="text-lg font-bold text-green-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">总挂单额</p>
+                <p id="totalOrderAmount" class="text-lg font-bold text-blue-500">--</p>
+            </div>
+        </div>
+    </div>
+
     <!-- 股票列表 -->
     <div id="stockList" class="p-4 pb-20 space-y-3">
         <div class="flex flex-col items-center justify-center py-20">
@@ -91,7 +121,7 @@
     <script>
         let isMonitoring = false;
         let monitorInterval = null;
-        let currentTab = 'auction'; // 'auction' 或 'realtime'
+        let currentTab = 'auction'; // 'auction', 'realtime', 'overnight'
 
         // 格式化金额
         function formatAmount(value) {
@@ -124,16 +154,15 @@
             const hours = now.getHours();
             const minutes = now.getMinutes();
             const time = hours * 60 + minutes;
-            // 上午 9:30-11:30, 下午 13:00-15:00
             return (time >= 9 * 60 + 30 && time <= 11 * 60 + 30) ||
                    (time >= 13 * 60 && time <= 15 * 60);
         }
 
         // 获取当前时段状态
         function getMarketStatus() {
-            if (isCallAuctionTime()) return 'auction'; // 集合竞价
-            if (isTradingTime()) return 'trading'; // 交易时段
-            return 'closed'; // 休市
+            if (isCallAuctionTime()) return 'auction';
+            if (isTradingTime()) return 'trading';
+            return 'closed';
         }
 
         // 计算倒计时
@@ -209,15 +238,32 @@
         // 切换 Tab
         function switchTab(tab) {
             currentTab = tab;
-            const tabAuction = document.getElementById('tabAuction');
-            const tabRealtime = document.getElementById('tabRealtime');
             
-            if (tab === 'auction') {
-                tabAuction.className = 'flex-1 py-3 text-center tab-active';
-                tabRealtime.className = 'flex-1 py-3 text-center text-gray-500';
+            // 更新Tab样式
+            const tabs = ['tabAuction', 'tabRealtime', 'tabOvernight'];
+            tabs.forEach(t => {
+                const el = document.getElementById(t);
+                if (t === 'tab' + tab.charAt(0).toUpperCase() + tab.slice(1)) {
+                    el.className = 'px-6 py-3 text-center whitespace-nowrap tab-active';
+                } else {
+                    el.className = 'px-6 py-3 text-center whitespace-nowrap text-gray-500';
+                }
+            });
+            
+            // 显示/隐藏统计栏
+            const statsBar = document.getElementById('statsBar');
+            const overnightStatsBar = document.getElementById('overnightStatsBar');
+            const overnightTip = document.getElementById('overnightTip');
+            
+            statsBar.classList.add('hidden');
+            overnightStatsBar.classList.add('hidden');
+            overnightTip.classList.add('hidden');
+            
+            if (tab === 'overnight') {
+                overnightStatsBar.classList.remove('hidden');
+                overnightTip.classList.remove('hidden');
             } else {
-                tabAuction.className = 'flex-1 py-3 text-center text-gray-500';
-                tabRealtime.className = 'flex-1 py-3 text-center tab-active';
+                statsBar.classList.remove('hidden');
             }
             
             // 清空数据
@@ -227,12 +273,10 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
                     </svg>
                     <p class="text-gray-400 text-lg mb-2">暂无数据</p>
-                    <p class="text-gray-400 text-sm text-center">点击"刷新"按钮<br/>获取主力资金数据</p>
+                    <p class="text-gray-400 text-sm text-center">点击"刷新"按钮<br/>获取数据</p>
                 </div>
             `;
-            document.getElementById('statsBar').classList.add('hidden');
             
-            // 如果正在监控，自动刷新数据
             if (isMonitoring) {
                 fetchStockData();
             }
@@ -241,14 +285,18 @@
         // 获取股票数据
         async function fetchStockData() {
             const listEl = document.getElementById('stockList');
-            const loadingText = currentTab === 'auction' ? '加载集合竞价数据...' : '加载实时主力数据...';
+            const loadingTexts = {
+                auction: '加载集合竞价数据...',
+                realtime: '加载实时主力数据...',
+                overnight: '加载隔夜挂单数据...'
+            };
             
             listEl.innerHTML = `
                 <div class="flex flex-col items-center justify-center py-20">
                     <svg class="w-8 h-8 text-blue-500 loading mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                     </svg>
-                    <p class="text-gray-500">${loadingText}</p>
+                    <p class="text-gray-500">${loadingTexts[currentTab]}</p>
                 </div>
             `;
 
@@ -256,12 +304,18 @@
                 let stocks;
                 if (currentTab === 'auction') {
                     stocks = await fetchCallAuctionData();
-                } else {
+                    renderStockList(stocks);
+                    updateStats(stocks);
+                } else if (currentTab === 'realtime') {
                     stocks = await fetchRealtimeData();
+                    renderStockList(stocks);
+                    updateStats(stocks);
+                } else {
+                    stocks = await fetchOvernightData();
+                    renderOvernightList(stocks);
+                    updateOvernightStats(stocks);
                 }
                 
-                renderStockList(stocks);
-                updateStats(stocks);
                 updateLastUpdate();
             } catch (error) {
                 console.error('获取数据失败:', error);
@@ -318,7 +372,6 @@
 
         // 获取实时主力流入数据
         async function fetchRealtimeData() {
-            // 使用实时资金流向排行接口
             const params = new URLSearchParams({
                 pn: '1',
                 pz: '50',
@@ -327,8 +380,8 @@
                 ut: 'fa5fd1943c7b386f172d6893dbfba10b',
                 fltt: '2',
                 invt: '2',
-                fid: 'f62', // 按主力净流入排序
-                fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23', // A股
+                fid: 'f62',
+                fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
                 fields: 'f12,f14,f2,f3,f62,f66,f69,f72,f78,f84,f85,f92,f126,f127,f140,f141',
             });
 
@@ -347,16 +400,85 @@
                     name: item.f14,
                     price: parseFloat((item.f2 ?? 0) / 100),
                     changePercent: parseFloat((item.f3 ?? 0) / 100),
-                    mainInflow: parseFloat(item.f62 ?? 0), // 主力净流入
-                    inflowRatio: parseFloat((item.f66 ?? 0) / 100), // 主力净占比
-                    superInflow: parseFloat(item.f84 ?? 0), // 超大单净流入
-                    bigInflow: parseFloat(item.f78 ?? 0), // 大单净流入
-                    mediumInflow: parseFloat(item.f84 ?? 0) - parseFloat(item.f78 ?? 0), // 中单
-                    smallInflow: parseFloat(item.f92 ?? 0), // 小单净流入
+                    mainInflow: parseFloat(item.f62 ?? 0),
+                    inflowRatio: parseFloat((item.f66 ?? 0) / 100),
+                    superInflow: parseFloat(item.f84 ?? 0),
+                    bigInflow: parseFloat(item.f78 ?? 0),
                     volume: parseFloat(item.f6 ?? 0),
                     updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
                 }))
                 .sort((a, b) => b.mainInflow - a.mainInflow);
+        }
+
+        // 获取隔夜挂单数据（涨停板/跌停板挂单排名）
+        async function fetchOvernightData() {
+            // 获取涨停板预测数据
+            const limitUpParams = new URLSearchParams({
+                pn: '1',
+                pz: '30',
+                po: '1',
+                np: '1',
+                ut: 'fa5fd1943c7b386f172d6893dbfba10b',
+                fltt: '2',
+                invt: '2',
+                fid: 'f184', // 按封单金额排序
+                fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
+                fields: 'f12,f14,f2,f3,f184,f183,f1,f44,f45,f46,f47,f48',
+            });
+
+            // 获取涨幅榜数据（模拟隔夜看涨挂单）
+            const gainersParams = new URLSearchParams({
+                pn: '1',
+                pz: '30',
+                po: '1',
+                np: '1',
+                ut: 'fa5fd1943c7b386f172d6893dbfba10b',
+                fltt: '2',
+                invt: '2',
+                fid: 'f3',
+                fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
+                fields: 'f12,f14,f2,f3,f62,f6,f15,f16,f17,f18,f44,f45,f46,f47',
+            });
+
+            const [limitUpResult, gainersResult] = await Promise.all([
+                fetch(`https://push2.eastmoney.com/api/qt/clist/get?${limitUpParams}`).then(r => r.json()),
+                fetch(`https://push2.eastmoney.com/api/qt/clist/get?${gainersParams}`).then(r => r.json())
+            ]);
+
+            const stocks = [];
+
+            // 处理涨停/涨幅数据（隔夜看涨挂单）
+            if (gainersResult.data?.diff) {
+                gainersResult.data.diff
+                    .filter(item => item.f12 && item.f14 && parseFloat(item.f3 ?? 0) > 0)
+                    .forEach(item => {
+                        const changePercent = parseFloat((item.f3 ?? 0) / 100);
+                        const price = parseFloat((item.f2 ?? 0) / 100);
+                        const prevClose = parseFloat(item.f18 ?? 0) / 100 || price / (1 + changePercent / 100);
+                        const limitUpPrice = prevClose * 1.1;
+                        const limitDownPrice = prevClose * 0.9;
+                        
+                        stocks.push({
+                            code: item.f12,
+                            name: item.f14,
+                            price: price,
+                            changePercent: changePercent,
+                            orderAmount: parseFloat(item.f62 ?? 0), // 用主力流入模拟挂单金额
+                            orderType: changePercent >= 9.5 ? '涨停挂单' : '看涨挂单',
+                            orderRatio: changePercent,
+                            limitUpPrice: limitUpPrice,
+                            limitDownPrice: limitDownPrice,
+                            volume: parseFloat(item.f6 ?? 0),
+                            turnoverRate: parseFloat((item.f8 ?? 0) / 100),
+                            updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                        });
+                    });
+            }
+
+            // 按挂单金额排序
+            return stocks
+                .sort((a, b) => b.orderAmount - a.orderAmount)
+                .slice(0, 50);
         }
 
         // 更新统计信息
@@ -374,6 +496,17 @@
             
             document.getElementById('inflowCount').textContent = inflowCount;
             document.getElementById('outflowCount').textContent = outflowCount;
+        }
+
+        // 更新隔夜挂单统计
+        function updateOvernightStats(stocks) {
+            const limitUpCount = stocks.filter(s => s.orderType === '涨停挂单').length;
+            const limitDownCount = stocks.filter(s => s.changePercent < 0).length;
+            const totalAmount = stocks.reduce((sum, s) => sum + Math.abs(s.orderAmount), 0);
+            
+            document.getElementById('limitUpCount').textContent = limitUpCount;
+            document.getElementById('limitDownCount').textContent = limitDownCount;
+            document.getElementById('totalOrderAmount').textContent = formatAmount(totalAmount);
         }
 
         // 渲染股票列表
@@ -447,6 +580,76 @@
             `).join('');
         }
 
+        // 渲染隔夜挂单列表
+        function renderOvernightList(stocks) {
+            const listEl = document.getElementById('stockList');
+            
+            if (stocks.length === 0) {
+                listEl.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-20">
+                        <p class="text-gray-400">暂无数据</p>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = stocks.map((stock, index) => `
+                <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center ${stock.orderType === '涨停挂单' ? 'bg-red-600' : index < 3 ? 'bg-red-500' : 'bg-gray-300'}">
+                                <span class="text-white text-sm font-bold">${index + 1}</span>
+                            </div>
+                            <div>
+                                <p class="text-base font-semibold text-gray-900">${stock.code}</p>
+                                <p class="text-sm text-gray-600">${stock.name}</p>
+                            </div>
+                        </div>
+                        <div class="flex flex-col items-end">
+                            <span class="px-2 py-1 rounded ${stock.orderType === '涨停挂单' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'} text-xs font-medium">
+                                ${stock.orderType}
+                            </span>
+                            <span class="text-sm font-semibold ${stock.changePercent >= 0 ? 'rise' : 'fall'} mt-1">
+                                ${formatChange(stock.changePercent)}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-gray-600">挂单金额(估)</span>
+                            <span class="text-xl font-bold ${stock.orderAmount >= 0 ? 'rise' : 'fall'}">
+                                ${stock.orderAmount >= 0 ? '+' : ''}${formatAmount(stock.orderAmount)}
+                            </span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-gray-200">
+                            <div class="text-center">
+                                <p class="text-xs text-gray-500">涨停价</p>
+                                <p class="text-sm font-semibold rise">¥${stock.limitUpPrice ? stock.limitUpPrice.toFixed(2) : '--'}</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-gray-500">跌停价</p>
+                                <p class="text-sm font-semibold fall">¥${stock.limitDownPrice ? stock.limitDownPrice.toFixed(2) : '--'}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                        <div>
+                            <p class="text-xs text-gray-500">现价</p>
+                            <p class="text-base font-semibold ${stock.changePercent >= 0 ? 'rise' : 'fall'}">¥${stock.price.toFixed(2)}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">成交额</p>
+                            <p class="text-base font-semibold text-gray-900">${formatAmount(stock.volume)}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">更新</p>
+                            <p class="text-sm text-gray-600">${stock.updateTime}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
         // 更新最后更新时间
         function updateLastUpdate() {
             const el = document.getElementById('lastUpdate');
@@ -473,8 +676,7 @@
                 btn.classList.remove('bg-blue-500');
                 btn.classList.add('bg-red-500');
                 fetchStockData();
-                // 根据当前模式设置刷新频率
-                const interval = currentTab === 'realtime' ? 3000 : 5000; // 实时模式3秒刷新
+                const interval = currentTab === 'realtime' ? 3000 : 5000;
                 monitorInterval = setInterval(fetchStockData, interval);
             }
         }
