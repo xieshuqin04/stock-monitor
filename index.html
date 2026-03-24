@@ -56,6 +56,9 @@
             <button id="tabHighOpen" onclick="switchTab('highOpen')" class="px-4 py-3 text-center whitespace-nowrap text-gray-500">
                 📈 高开1%-4%
             </button>
+            <button id="tabHotConcept" onclick="switchTab('hotConcept')" class="px-4 py-3 text-center whitespace-nowrap text-gray-500">
+                🔥 热点题材
+            </button>
             <button id="tabRealtime" onclick="switchTab('realtime')" class="px-4 py-3 text-center whitespace-nowrap text-gray-500">
                 实时主力流入
             </button>
@@ -213,6 +216,33 @@
             <div>
                 <p class="text-xs text-gray-500">回落中</p>
                 <p id="highOpenFallCount" class="text-lg font-bold text-green-500">--</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 热点题材说明 -->
+    <div id="hotConceptTip" class="hidden bg-orange-50 border-b border-orange-200 px-4 py-2">
+        <p class="text-xs text-orange-700">🔥 实时热点题材概念板块，涨幅>=3%标记为热门，显示领涨股票和主力资金流向</p>
+    </div>
+
+    <!-- 热点题材统计栏 -->
+    <div id="hotConceptStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+        <div class="flex justify-around text-center">
+            <div>
+                <p class="text-xs text-gray-500">热点题材数</p>
+                <p id="hotConceptCount" class="text-lg font-bold text-orange-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">🔥热门题材</p>
+                <p id="hotConceptHotCount" class="text-lg font-bold text-red-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">上涨题材</p>
+                <p id="hotConceptRiseCount" class="text-lg font-bold text-red-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">下跌题材</p>
+                <p id="hotConceptFallCount" class="text-lg font-bold text-green-500">--</p>
             </div>
         </div>
     </div>
@@ -438,7 +468,7 @@
         function switchTab(tab) {
             currentTab = tab;
 
-            const tabs = ['tabAuction', 'tabHighOpen', 'tabRealtime', 'tabOvernight', 'tabInstitution', 'tabAlert'];
+            const tabs = ['tabAuction', 'tabHighOpen', 'tabHotConcept', 'tabRealtime', 'tabOvernight', 'tabInstitution', 'tabAlert'];
             tabs.forEach(t => {
                 const el = document.getElementById(t);
                 if (t === 'tab' + tab.charAt(0).toUpperCase() + tab.slice(1)) {
@@ -449,12 +479,13 @@
             });
 
             // 隐藏所有统计栏和提示
-            ['statsBar', 'overnightStatsBar', 'institutionStatsBar', 'alertStatsBar', 'highOpenStatsBar'].forEach(id => {
+            ['statsBar', 'overnightStatsBar', 'institutionStatsBar', 'alertStatsBar', 'highOpenStatsBar', 'hotConceptStatsBar'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.add('hidden');
             });
-            ['overnightTip', 'institutionTip', 'alertTip', 'highOpenTip'].forEach(id => {
-                document.getElementById(id).classList.add('hidden');
+            ['overnightTip', 'institutionTip', 'alertTip', 'highOpenTip', 'hotConceptTip'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
             });
 
             // 显示对应的统计栏和提示
@@ -462,6 +493,11 @@
                 const statsBar = document.getElementById('highOpenStatsBar');
                 if (statsBar) statsBar.classList.remove('hidden');
                 document.getElementById('highOpenTip').classList.remove('hidden');
+            } else if (tab === 'hotConcept') {
+                const statsBar = document.getElementById('hotConceptStatsBar');
+                if (statsBar) statsBar.classList.remove('hidden');
+                const tip = document.getElementById('hotConceptTip');
+                if (tip) tip.classList.remove('hidden');
             } else if (tab === 'overnight') {
                 document.getElementById('overnightStatsBar').classList.remove('hidden');
                 document.getElementById('overnightTip').classList.remove('hidden');
@@ -495,6 +531,7 @@
             const loadingTexts = {
                 auction: '加载集合竞价数据...',
                 highOpen: '加载高开股票数据...',
+                hotConcept: '加载热点题材数据...',
                 realtime: '加载实时主力数据...',
                 overnight: '加载隔夜挂单数据...',
                 institution: '加载机构操盘数据...',
@@ -520,6 +557,10 @@
                     stocks = await fetchHighOpenData();
                     renderHighOpenList(stocks);
                     updateHighOpenStats(stocks);
+                } else if (currentTab === 'hotConcept') {
+                    stocks = await fetchHotConceptData();
+                    renderHotConceptList(stocks);
+                    updateHotConceptStats(stocks);
                 } else if (currentTab === 'realtime') {
                     stocks = await fetchRealtimeData();
                     renderStockList(stocks);
@@ -602,6 +643,74 @@
                 .sort((a, b) => b.openChange - a.openChange); // 按开盘涨幅排序
 
             return stocks;
+        }
+
+        // 获取热点题材概念板块数据
+        async function fetchHotConceptData() {
+            // 获取概念板块涨幅排行
+            const params = new URLSearchParams({
+                pn: '1', pz: '30', po: '1', np: '1',
+                fltt: '2', invt: '2', fid: 'f3',
+                fs: 'm:90+t:2',  // 概念板块
+                fields: 'f12,f14,f2,f3,f62,f66,f6,f8',
+            });
+
+            const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+            const response = await fetch(url);
+            const result = await response.json();
+            
+            if (!result.data?.diff) {
+                throw new Error('数据为空');
+            }
+
+            const concepts = result.data.diff
+                .filter(item => item.f12 && item.f14)
+                .map(item => ({
+                    code: item.f12,      // 概念代码
+                    name: item.f14,      // 概念名称
+                    price: parseFloat(item.f2 ?? 0),      // 概念指数
+                    changePercent: parseFloat(item.f3 ?? 0), // 涨跌幅
+                    mainInflow: parseFloat(item.f62 ?? 0),   // 主力净流入
+                    inflowRatio: parseFloat(item.f66 ?? 0),  // 净流入占比
+                    volume: parseFloat(item.f6 ?? 0),        // 成交额
+                    turnoverRate: parseFloat(item.f8 ?? 0),  // 换手率
+                    updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                    stocks: []  // 领涨股票列表
+                }))
+                .sort((a, b) => b.changePercent - a.changePercent);
+
+            // 获取每个概念板块的领涨股票
+            for (const concept of concepts.slice(0, 15)) {  // 只获取前15个概念的股票详情
+                try {
+                    const stockParams = new URLSearchParams({
+                        pn: '1', pz: '5', po: '1', np: '1',
+                        fltt: '2', invt: '2', fid: 'f3',
+                        fs: `b:${concept.code}+f:!50`,  // 该概念板块的股票
+                        fields: 'f12,f14,f2,f3,f62',
+                    });
+                    const stockUrl = `https://push2.eastmoney.com/api/qt/clist/get?${stockParams}`;
+                    const stockRes = await fetch(stockUrl);
+                    const stockData = await stockRes.json();
+                    
+                    if (stockData.data?.diff) {
+                        concept.stocks = stockData.data.diff
+                            .filter(s => s.f12 && s.f14)
+                            .map(s => ({
+                                code: s.f12,
+                                name: s.f14,
+                                price: parseFloat(s.f2 ?? 0),
+                                changePercent: parseFloat(s.f3 ?? 0),
+                                mainInflow: parseFloat(s.f62 ?? 0)
+                            }))
+                            .sort((a, b) => b.changePercent - a.changePercent)
+                            .slice(0, 3);  // 只取前3只领涨股
+                    }
+                } catch (e) {
+                    // 忽略单个概念的股票获取失败
+                }
+            }
+
+            return concepts;
         }
 
         // 获取集合竞价数据
@@ -991,6 +1100,99 @@
             document.getElementById('avgOpenChange').textContent = '+' + avgOpenChange + '%';
             document.getElementById('highOpenRiseCount').textContent = riseCount;
             document.getElementById('highOpenFallCount').textContent = fallCount;
+        }
+
+        // 渲染热点题材列表
+        function renderHotConceptList(concepts) {
+            const listEl = document.getElementById('stockList');
+
+            if (concepts.length === 0) {
+                listEl.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-20">
+                        <svg class="w-12 h-12 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
+                        </svg>
+                        <p class="text-gray-500 mb-2">暂无热点题材数据</p>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = concepts.map((concept, index) => {
+                const isHot = concept.changePercent >= 3; // 涨幅>=3%标记为热门
+                const stockList = concept.stocks && concept.stocks.length > 0 
+                    ? concept.stocks.map(s => `
+                        <span class="inline-flex items-center px-2 py-1 rounded text-xs ${s.changePercent >= 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}">
+                            ${s.name} ${formatChange(s.changePercent)}
+                        </span>
+                    `).join('') 
+                    : '<span class="text-gray-400 text-xs">加载中...</span>';
+
+                return `
+                <div class="bg-white rounded-lg shadow-sm border ${isHot ? 'border-orange-300 bg-orange-50' : 'border-gray-100'} p-4 mb-3">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center ${index < 3 ? 'bg-orange-500' : 'bg-gray-400'}">
+                                <span class="text-white text-sm font-bold">${index + 1}</span>
+                            </div>
+                            <div>
+                                <p class="text-base font-semibold text-gray-900">${concept.name}</p>
+                                <p class="text-xs text-gray-500">成交额: ${formatAmount(concept.volume)}</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="px-3 py-1 rounded-lg ${concept.changePercent >= 0 ? 'bg-red-100' : 'bg-green-100'}">
+                                <span class="text-lg font-bold ${concept.changePercent >= 0 ? 'rise' : 'fall'}">${formatChange(concept.changePercent)}</span>
+                            </div>
+                            ${isHot ? '<span class="text-xs text-orange-500 font-medium">🔥 热门</span>' : ''}
+                        </div>
+                    </div>
+                    
+                    <!-- 领涨股票 -->
+                    <div class="bg-white rounded-lg p-3 border border-gray-100">
+                        <p class="text-xs text-gray-500 mb-2">📈 领涨股票</p>
+                        <div class="flex flex-wrap gap-2">
+                            ${stockList}
+                        </div>
+                    </div>
+                    
+                    <!-- 资金数据 -->
+                    <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                        <div>
+                            <p class="text-xs text-gray-500">主力净流入</p>
+                            <p class="text-sm font-semibold ${concept.mainInflow >= 0 ? 'rise' : 'fall'}">${concept.mainInflow >= 0 ? '+' : ''}${formatAmount(concept.mainInflow)}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">净流入占比</p>
+                            <p class="text-sm font-semibold">${concept.inflowRatio.toFixed(2)}%</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">换手率</p>
+                            <p class="text-sm font-semibold">${concept.turnoverRate.toFixed(2)}%</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">更新</p>
+                            <p class="text-sm text-gray-600">${concept.updateTime}</p>
+                        </div>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        // 更新热点题材统计
+        function updateHotConceptStats(concepts) {
+            const statsBar = document.getElementById('hotConceptStatsBar');
+            if (!statsBar) return;
+
+            const hotCount = concepts.filter(c => c.changePercent >= 3).length;
+            const riseCount = concepts.filter(c => c.changePercent > 0).length;
+            const fallCount = concepts.filter(c => c.changePercent < 0).length;
+            const totalInflow = concepts.reduce((sum, c) => sum + (c.mainInflow || 0), 0);
+
+            document.getElementById('hotConceptCount').textContent = concepts.length;
+            document.getElementById('hotConceptHotCount').textContent = hotCount;
+            document.getElementById('hotConceptRiseCount').textContent = riseCount;
+            document.getElementById('hotConceptFallCount').textContent = fallCount;
         }
 
         // 渲染股票列表
@@ -1434,7 +1636,7 @@
                 btn.classList.add('bg-red-500');
                 
                 // 切换到集合竞价相关Tab并获取数据
-                if (currentTab === 'auction' || currentTab === 'highOpen') {
+                if (currentTab === 'auction' || currentTab === 'highOpen' || currentTab === 'hotConcept') {
                     fetchStockData();
                 } else {
                     switchTab('auction');
@@ -1442,7 +1644,7 @@
                 
                 // 集合竞价每5秒刷新一次
                 auctionInterval = setInterval(() => {
-                    if (currentTab === 'auction' || currentTab === 'highOpen') {
+                    if (currentTab === 'auction' || currentTab === 'highOpen' || currentTab === 'hotConcept') {
                         fetchStockData();
                     }
                 }, 5000);
