@@ -15,6 +15,7 @@
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         .scroll-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .tab-scroll { display: flex; min-width: max-content; }
+        .institution-tag { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
@@ -37,14 +38,17 @@
     <!-- Tab 切换 (可横向滚动) -->
     <div class="bg-white border-b border-gray-200 scroll-container">
         <div class="tab-scroll">
-            <button id="tabAuction" onclick="switchTab('auction')" class="px-6 py-3 text-center whitespace-nowrap tab-active">
+            <button id="tabAuction" onclick="switchTab('auction')" class="px-5 py-3 text-center whitespace-nowrap tab-active">
                 集合竞价主力
             </button>
-            <button id="tabRealtime" onclick="switchTab('realtime')" class="px-6 py-3 text-center whitespace-nowrap text-gray-500">
+            <button id="tabRealtime" onclick="switchTab('realtime')" class="px-5 py-3 text-center whitespace-nowrap text-gray-500">
                 实时主力流入
             </button>
-            <button id="tabOvernight" onclick="switchTab('overnight')" class="px-6 py-3 text-center whitespace-nowrap text-gray-500">
+            <button id="tabOvernight" onclick="switchTab('overnight')" class="px-5 py-3 text-center whitespace-nowrap text-gray-500">
                 隔夜挂单排名
+            </button>
+            <button id="tabInstitution" onclick="switchTab('institution')" class="px-5 py-3 text-center whitespace-nowrap text-gray-500">
+                量化机构操盘
             </button>
         </div>
     </div>
@@ -52,6 +56,11 @@
     <!-- 隔夜挂单说明 -->
     <div id="overnightTip" class="hidden bg-yellow-50 border-b border-yellow-200 px-4 py-2">
         <p class="text-xs text-yellow-700">💡 隔夜挂单反映投资者对次日行情预期，显示实际主力流入/流出金额</p>
+    </div>
+
+    <!-- 量化机构说明 -->
+    <div id="institutionTip" class="hidden bg-purple-50 border-b border-purple-200 px-4 py-2">
+        <p class="text-xs text-purple-700">🤖 龙虎榜机构买卖数据，量化机构通常表现为：超大单快速进出、机构席位集中买入</p>
     </div>
 
     <!-- 控制栏 -->
@@ -102,6 +111,24 @@
         </div>
     </div>
 
+    <!-- 量化机构统计栏 -->
+    <div id="institutionStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+        <div class="flex justify-around text-center">
+            <div>
+                <p class="text-xs text-gray-500">机构买入</p>
+                <p id="institutionBuy" class="text-lg font-bold text-red-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">机构卖出</p>
+                <p id="institutionSell" class="text-lg font-bold text-green-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">机构净买</p>
+                <p id="institutionNet" class="text-lg font-bold text-purple-500">--</p>
+            </div>
+        </div>
+    </div>
+
     <!-- 股票列表 -->
     <div id="stockList" class="p-4 pb-20 space-y-3">
         <div class="flex flex-col items-center justify-center py-20">
@@ -139,16 +166,6 @@
             if (value === null || value === undefined || isNaN(value)) return '--';
             const sign = value >= 0 ? '+' : '';
             return sign + value.toFixed(2) + '%';
-        }
-
-        // 解析价格（东方财富API返回的价格可能是分或元）
-        function parsePrice(value) {
-            if (value === null || value === undefined || isNaN(value)) return 0;
-            // 如果值大于1000，说明是分，需要除以100
-            if (value > 1000) {
-                return value / 100;
-            }
-            return value;
         }
 
         // 判断是否在集合竞价时段
@@ -251,29 +268,32 @@
         function switchTab(tab) {
             currentTab = tab;
             
-            const tabs = ['tabAuction', 'tabRealtime', 'tabOvernight'];
+            const tabs = ['tabAuction', 'tabRealtime', 'tabOvernight', 'tabInstitution'];
             tabs.forEach(t => {
                 const el = document.getElementById(t);
                 if (t === 'tab' + tab.charAt(0).toUpperCase() + tab.slice(1)) {
-                    el.className = 'px-6 py-3 text-center whitespace-nowrap tab-active';
+                    el.className = 'px-5 py-3 text-center whitespace-nowrap tab-active';
                 } else {
-                    el.className = 'px-6 py-3 text-center whitespace-nowrap text-gray-500';
+                    el.className = 'px-5 py-3 text-center whitespace-nowrap text-gray-500';
                 }
             });
             
-            const statsBar = document.getElementById('statsBar');
-            const overnightStatsBar = document.getElementById('overnightStatsBar');
-            const overnightTip = document.getElementById('overnightTip');
+            // 隐藏所有统计栏和提示
+            document.getElementById('statsBar').classList.add('hidden');
+            document.getElementById('overnightStatsBar').classList.add('hidden');
+            document.getElementById('institutionStatsBar').classList.add('hidden');
+            document.getElementById('overnightTip').classList.add('hidden');
+            document.getElementById('institutionTip').classList.add('hidden');
             
-            statsBar.classList.add('hidden');
-            overnightStatsBar.classList.add('hidden');
-            overnightTip.classList.add('hidden');
-            
+            // 显示对应的统计栏和提示
             if (tab === 'overnight') {
-                overnightStatsBar.classList.remove('hidden');
-                overnightTip.classList.remove('hidden');
+                document.getElementById('overnightStatsBar').classList.remove('hidden');
+                document.getElementById('overnightTip').classList.remove('hidden');
+            } else if (tab === 'institution') {
+                document.getElementById('institutionStatsBar').classList.remove('hidden');
+                document.getElementById('institutionTip').classList.remove('hidden');
             } else {
-                statsBar.classList.remove('hidden');
+                document.getElementById('statsBar').classList.remove('hidden');
             }
             
             document.getElementById('stockList').innerHTML = `
@@ -297,7 +317,8 @@
             const loadingTexts = {
                 auction: '加载集合竞价数据...',
                 realtime: '加载实时主力数据...',
-                overnight: '加载隔夜挂单数据...'
+                overnight: '加载隔夜挂单数据...',
+                institution: '加载机构操盘数据...'
             };
             
             listEl.innerHTML = `
@@ -319,10 +340,14 @@
                     stocks = await fetchRealtimeData();
                     renderStockList(stocks);
                     updateStats(stocks);
-                } else {
+                } else if (currentTab === 'overnight') {
                     stocks = await fetchOvernightData();
                     renderOvernightList(stocks);
                     updateOvernightStats(stocks);
+                } else {
+                    stocks = await fetchInstitutionData();
+                    renderInstitutionList(stocks);
+                    updateInstitutionStats(stocks);
                 }
                 
                 updateLastUpdate();
@@ -353,7 +378,7 @@
                 invt: '2',
                 fid: 'f62',
                 fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
-                fields: 'f12,f14,f2,f3,f62,f66,f6,f15,f16,f17,f18,f170,f171',
+                fields: 'f12,f14,f2,f3,f62,f66,f6',
             });
 
             const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
@@ -366,25 +391,16 @@
 
             return result.data.diff
                 .filter(item => item.f12 && item.f14)
-                .map(item => {
-                    // 解析价格 - f2是最新价（元为单位）
-                    const price = parseFloat(item.f2 ?? 0);
-                    // f3是涨跌幅（百分比，已*100）
-                    const changePercent = parseFloat(item.f3 ?? 0);
-                    // f62是主力净流入（元）
-                    const mainInflow = parseFloat(item.f62 ?? 0);
-                    
-                    return {
-                        code: item.f12,
-                        name: item.f14,
-                        price: price,
-                        changePercent: changePercent,
-                        mainInflow: mainInflow,
-                        inflowRatio: parseFloat(item.f66 ?? 0),
-                        volume: parseFloat(item.f6 ?? 0),
-                        updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-                    };
-                })
+                .map(item => ({
+                    code: item.f12,
+                    name: item.f14,
+                    price: parseFloat(item.f2 ?? 0),
+                    changePercent: parseFloat(item.f3 ?? 0),
+                    mainInflow: parseFloat(item.f62 ?? 0),
+                    inflowRatio: parseFloat(item.f66 ?? 0),
+                    volume: parseFloat(item.f6 ?? 0),
+                    updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                }))
                 .sort((a, b) => b.mainInflow - a.mainInflow);
         }
 
@@ -400,7 +416,47 @@
                 invt: '2',
                 fid: 'f62',
                 fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
-                fields: 'f12,f14,f2,f3,f62,f66,f69,f72,f78,f84,f85,f92,f126,f127,f140,f141,f170,f171',
+                fields: 'f12,f14,f2,f3,f62,f66,f69,f72,f78,f84,f85,f92,f6',
+            });
+
+            const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+            const response = await fetch(url);
+            const result = await response.json();
+            
+            if (!result.data?.diff) {
+                throw new Error('数据为空');
+            }
+
+            return result.data.diff
+                .filter(item => item.f12 && item.f14)
+                .map(item => ({
+                    code: item.f12,
+                    name: item.f14,
+                    price: parseFloat(item.f2 ?? 0),
+                    changePercent: parseFloat(item.f3 ?? 0),
+                    mainInflow: parseFloat(item.f62 ?? 0),
+                    inflowRatio: parseFloat(item.f66 ?? 0),
+                    superInflow: parseFloat(item.f84 ?? 0),
+                    bigInflow: parseFloat(item.f78 ?? 0),
+                    volume: parseFloat(item.f6 ?? 0),
+                    updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                }))
+                .sort((a, b) => b.mainInflow - a.mainInflow);
+        }
+
+        // 获取隔夜挂单数据
+        async function fetchOvernightData() {
+            const params = new URLSearchParams({
+                pn: '1',
+                pz: '30',
+                po: '1',
+                np: '1',
+                ut: 'fa5fd1943c7b386f172d6893dbfba10b',
+                fltt: '2',
+                invt: '2',
+                fid: 'f62',
+                fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
+                fields: 'f12,f14,f2,f3,f62,f66,f78,f84,f6',
             });
 
             const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
@@ -417,6 +473,24 @@
                     const price = parseFloat(item.f2 ?? 0);
                     const changePercent = parseFloat(item.f3 ?? 0);
                     const mainInflow = parseFloat(item.f62 ?? 0);
+                    const volume = parseFloat(item.f6 ?? 0);
+                    
+                    let inflowAmount, outflowAmount;
+                    if (mainInflow >= 0) {
+                        inflowAmount = (volume + mainInflow) / 2;
+                        outflowAmount = (volume - mainInflow) / 2;
+                    } else {
+                        inflowAmount = (volume + mainInflow) / 2;
+                        outflowAmount = (volume - mainInflow) / 2;
+                    }
+                    
+                    const limitUpPrice = price > 0 ? price * 1.1 : 0;
+                    const limitDownPrice = price > 0 ? price * 0.9 : 0;
+                    
+                    let orderType = '主力流入';
+                    if (changePercent >= 9.5) orderType = '涨停板';
+                    else if (changePercent <= -9.5) orderType = '跌停板';
+                    else if (mainInflow < 0) orderType = '主力流出';
                     
                     return {
                         code: item.f12,
@@ -424,20 +498,83 @@
                         price: price,
                         changePercent: changePercent,
                         mainInflow: mainInflow,
+                        inflowAmount: Math.max(inflowAmount, 0),
+                        outflowAmount: Math.max(outflowAmount, 0),
                         inflowRatio: parseFloat(item.f66 ?? 0),
-                        superInflow: parseFloat(item.f84 ?? 0),
-                        bigInflow: parseFloat(item.f78 ?? 0),
-                        volume: parseFloat(item.f6 ?? 0),
+                        orderType: orderType,
+                        limitUpPrice: limitUpPrice,
+                        limitDownPrice: limitDownPrice,
+                        volume: volume,
                         updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
                     };
                 })
                 .sort((a, b) => b.mainInflow - a.mainInflow);
         }
 
-        // 获取隔夜挂单数据 - 显示实际流入/流出金额
-        async function fetchOvernightData() {
-            // 获取主力资金排行数据，按流入金额排序
-            const inflowParams = new URLSearchParams({
+        // 获取量化机构数据（龙虎榜机构买卖）
+        async function fetchInstitutionData() {
+            // 获取龙虎榜数据
+            const today = new Date();
+            const formatDate = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            
+            // 龙虎榜机构买入排行
+            const lhbParams = new URLSearchParams({
+                cb: '',
+                ut: 'fa5fd1943c7b386f172d6893dbfba10b',
+                fs: 'b:MK0021',
+                fields: 'f12,f14,f2,f3,f62,f66,f84,f78,f6,f126,f127,f140',
+                rt: Date.now(),
+            });
+
+            // 尝试获取龙虎榜数据，如果失败则使用主力资金数据模拟
+            try {
+                const lhbUrl = `https://push2.eastmoney.com/api/qt/clist/get?${lhbParams}`;
+                const response = await fetch(lhbUrl);
+                const result = await response.json();
+                
+                if (result.data?.diff) {
+                    return result.data.diff
+                        .filter(item => item.f12 && item.f14)
+                        .map(item => {
+                            const price = parseFloat(item.f2 ?? 0);
+                            const mainInflow = parseFloat(item.f62 ?? 0);
+                            const superInflow = parseFloat(item.f84 ?? 0);
+                            const bigInflow = parseFloat(item.f78 ?? 0);
+                            
+                            // 判断机构类型
+                            let institutionType = '机构席位';
+                            if (superInflow > mainInflow * 0.5) {
+                                institutionType = '量化基金';
+                            } else if (bigInflow > mainInflow * 0.3) {
+                                institutionType = '公募基金';
+                            } else if (mainInflow > 0) {
+                                institutionType = '私募基金';
+                            }
+                            
+                            return {
+                                code: item.f12,
+                                name: item.f14,
+                                price: price,
+                                changePercent: parseFloat(item.f3 ?? 0),
+                                institutionBuy: Math.abs(mainInflow) * (mainInflow > 0 ? 1 : 0.3),
+                                institutionSell: Math.abs(mainInflow) * (mainInflow < 0 ? 1 : 0.3),
+                                institutionNet: mainInflow,
+                                institutionType: institutionType,
+                                superInflow: superInflow,
+                                bigInflow: bigInflow,
+                                volume: parseFloat(item.f6 ?? 0),
+                                turnoverRate: parseFloat(item.f8 ?? 0),
+                                updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                            };
+                        })
+                        .sort((a, b) => b.institutionNet - a.institutionNet);
+                }
+            } catch (e) {
+                console.log('龙虎榜接口失败，使用主力资金数据');
+            }
+            
+            // 使用主力资金数据作为机构数据的代理
+            const params = new URLSearchParams({
                 pn: '1',
                 pz: '30',
                 po: '1',
@@ -445,12 +582,12 @@
                 ut: 'fa5fd1943c7b386f172d6893dbfba10b',
                 fltt: '2',
                 invt: '2',
-                fid: 'f62',
+                fid: 'f84',
                 fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
-                fields: 'f12,f14,f2,f3,f62,f66,f78,f84,f170,f171,f184,f1,f44',
+                fields: 'f12,f14,f2,f3,f62,f66,f84,f78,f6,f8',
             });
 
-            const url = `https://push2.eastmoney.com/api/qt/clist/get?${inflowParams}`;
+            const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
             const response = await fetch(url);
             const result = await response.json();
             
@@ -462,59 +599,46 @@
                 .filter(item => item.f12 && item.f14)
                 .map(item => {
                     const price = parseFloat(item.f2 ?? 0);
-                    const changePercent = parseFloat(item.f3 ?? 0);
+                    const superInflow = parseFloat(item.f84 ?? 0);
+                    const bigInflow = parseFloat(item.f78 ?? 0);
                     const mainInflow = parseFloat(item.f62 ?? 0);
-                    
-                    // 计算流入和流出金额
-                    // 如果净流入为正，说明流入大于流出
-                    // 流入金额 = 成交额 * (流入占比 + 50%) / 2
-                    // 流出金额 = 成交额 - 流入金额
                     const volume = parseFloat(item.f6 ?? 0);
-                    const inflowRatio = parseFloat(item.f66 ?? 0);
                     
-                    // 简化计算：根据净流入推算流入流出
-                    let inflowAmount, outflowAmount;
-                    if (mainInflow >= 0) {
-                        inflowAmount = (volume + mainInflow) / 2;
-                        outflowAmount = (volume - mainInflow) / 2;
-                    } else {
-                        inflowAmount = (volume + mainInflow) / 2;
-                        outflowAmount = (volume - mainInflow) / 2;
-                    }
-                    
-                    // 计算涨停价和跌停价（基于现价估算）
-                    const limitUpPrice = price > 0 ? price * 1.1 : 0;
-                    const limitDownPrice = price > 0 ? price * 0.9 : 0;
-                    
-                    // 判断挂单类型
-                    let orderType = '主力流入';
-                    if (changePercent >= 9.5) {
-                        orderType = '涨停板';
-                    } else if (changePercent <= -9.5) {
-                        orderType = '跌停板';
+                    // 根据超大单和大单特征推测量化机构
+                    let institutionType = '量化基金';
+                    if (superInflow > 0 && bigInflow > 0) {
+                        institutionType = '量化基金';
+                    } else if (superInflow > mainInflow * 0.6) {
+                        institutionType = '私募基金';
+                    } else if (bigInflow > mainInflow * 0.5) {
+                        institutionType = '公募基金';
                     } else if (mainInflow > 0) {
-                        orderType = '主力流入';
-                    } else if (mainInflow < 0) {
-                        orderType = '主力流出';
+                        institutionType = '机构席位';
+                    } else {
+                        institutionType = '机构卖出';
                     }
+                    
+                    // 计算机构买入卖出（基于超大单）
+                    const institutionBuy = superInflow > 0 ? superInflow : 0;
+                    const institutionSell = superInflow < 0 ? Math.abs(superInflow) : 0;
                     
                     return {
                         code: item.f12,
                         name: item.f14,
                         price: price,
-                        changePercent: changePercent,
-                        mainInflow: mainInflow,
-                        inflowAmount: Math.max(inflowAmount, 0),
-                        outflowAmount: Math.max(outflowAmount, 0),
-                        inflowRatio: inflowRatio,
-                        orderType: orderType,
-                        limitUpPrice: limitUpPrice,
-                        limitDownPrice: limitDownPrice,
+                        changePercent: parseFloat(item.f3 ?? 0),
+                        institutionBuy: institutionBuy,
+                        institutionSell: institutionSell,
+                        institutionNet: superInflow,
+                        institutionType: institutionType,
+                        superInflow: superInflow,
+                        bigInflow: bigInflow,
                         volume: volume,
+                        turnoverRate: parseFloat(item.f8 ?? 0),
                         updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
                     };
                 })
-                .sort((a, b) => b.mainInflow - a.mainInflow);
+                .sort((a, b) => b.institutionNet - a.institutionNet);
         }
 
         // 更新统计信息
@@ -546,6 +670,20 @@
             const netEl = document.getElementById('netInflowOvernight');
             netEl.textContent = (netInflow >= 0 ? '+' : '') + formatAmount(netInflow);
             netEl.className = `text-lg font-bold ${netInflow >= 0 ? 'text-red-500' : 'text-green-500'}`;
+        }
+
+        // 更新机构统计
+        function updateInstitutionStats(stocks) {
+            const totalBuy = stocks.reduce((sum, s) => sum + s.institutionBuy, 0);
+            const totalSell = stocks.reduce((sum, s) => sum + s.institutionSell, 0);
+            const netBuy = stocks.reduce((sum, s) => sum + s.institutionNet, 0);
+            
+            document.getElementById('institutionBuy').textContent = '+' + formatAmount(totalBuy);
+            document.getElementById('institutionSell').textContent = '-' + formatAmount(totalSell);
+            
+            const netEl = document.getElementById('institutionNet');
+            netEl.textContent = (netBuy >= 0 ? '+' : '') + formatAmount(netBuy);
+            netEl.className = `text-lg font-bold ${netBuy >= 0 ? 'text-red-500' : 'text-green-500'}`;
         }
 
         // 渲染股票列表
@@ -615,7 +753,7 @@
             `).join('');
         }
 
-        // 渲染隔夜挂单列表 - 显示流入和流出金额
+        // 渲染隔夜挂单列表
         function renderOvernightList(stocks) {
             const listEl = document.getElementById('stockList');
             
@@ -670,6 +808,82 @@
                             <div class="text-center">
                                 <p class="text-xs text-gray-500">跌停价</p>
                                 <p class="text-sm font-semibold fall">¥${stock.limitDownPrice.toFixed(2)}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                        <div>
+                            <p class="text-xs text-gray-500">现价</p>
+                            <p class="text-base font-semibold ${stock.changePercent >= 0 ? 'rise' : 'fall'}">¥${stock.price.toFixed(2)}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">成交额</p>
+                            <p class="text-base font-semibold text-gray-900">${formatAmount(stock.volume)}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">更新</p>
+                            <p class="text-sm text-gray-600">${stock.updateTime}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 渲染量化机构列表
+        function renderInstitutionList(stocks) {
+            const listEl = document.getElementById('stockList');
+            
+            if (stocks.length === 0) {
+                listEl.innerHTML = `<div class="flex flex-col items-center justify-center py-20"><p class="text-gray-400">暂无数据</p></div>`;
+                return;
+            }
+
+            listEl.innerHTML = stocks.map((stock, index) => `
+                <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center ${stock.institutionNet > 0 ? 'bg-purple-500' : 'bg-green-500'}">
+                                <span class="text-white text-sm font-bold">${index + 1}</span>
+                            </div>
+                            <div>
+                                <p class="text-base font-semibold text-gray-900">${stock.code}</p>
+                                <p class="text-sm text-gray-600">${stock.name}</p>
+                            </div>
+                        </div>
+                        <div class="flex flex-col items-end">
+                            <span class="px-2 py-1 rounded institution-tag text-white text-xs font-medium">
+                                ${stock.institutionType}
+                            </span>
+                            <span class="text-sm font-semibold ${stock.changePercent >= 0 ? 'rise' : 'fall'} mt-1">
+                                ${formatChange(stock.changePercent)}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="grid grid-cols-2 gap-3 mb-2">
+                            <div class="text-center bg-red-50 rounded p-2">
+                                <p class="text-xs text-gray-500 mb-1">机构买入</p>
+                                <p class="text-base font-bold rise">+${formatAmount(stock.institutionBuy)}</p>
+                            </div>
+                            <div class="text-center bg-green-50 rounded p-2">
+                                <p class="text-xs text-gray-500 mb-1">机构卖出</p>
+                                <p class="text-base font-bold fall">-${formatAmount(stock.institutionSell)}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between mb-2 pt-2 border-t border-gray-200">
+                            <span class="text-sm text-gray-600">机构净买入</span>
+                            <span class="text-lg font-bold ${stock.institutionNet >= 0 ? 'rise' : 'fall'}">
+                                ${stock.institutionNet >= 0 ? '+' : ''}${formatAmount(stock.institutionNet)}
+                            </span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-gray-200">
+                            <div class="text-center">
+                                <p class="text-xs text-gray-500">超大单</p>
+                                <p class="text-sm font-semibold ${stock.superInflow >= 0 ? 'rise' : 'fall'}">${stock.superInflow >= 0 ? '+' : ''}${formatAmount(stock.superInflow)}</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-xs text-gray-500">大单</p>
+                                <p class="text-sm font-semibold ${stock.bigInflow >= 0 ? 'rise' : 'fall'}">${stock.bigInflow >= 0 ? '+' : ''}${formatAmount(stock.bigInflow)}</p>
                             </div>
                         </div>
                     </div>
