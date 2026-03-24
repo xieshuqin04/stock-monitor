@@ -775,7 +775,8 @@
 
         // 获取美股映射数据
         async function fetchUsStockMapData() {
-            // 模拟美股涨跌幅数据（实际需要美股API）
+            // 模拟美股涨跌幅数据（实际需要美股API，纯前端无法直接获取）
+            // 如需真实数据，可使用 Alpha Vantage / Finnhub 等免费API（需注册获取API Key）
             const usStockChanges = {
                 'AAPL': (Math.random() * 6 - 2).toFixed(2),
                 'TSLA': (Math.random() * 10 - 3).toFixed(2),
@@ -801,29 +802,38 @@
                 'BA': (Math.random() * 5 - 2).toFixed(2),
             };
 
-            // 模拟港股涨跌幅数据（实际需要港股API）
-            const hkStockChanges = {
-                '00700': (Math.random() * 6 - 2).toFixed(2),  // 腾讯控股
-                '03690': (Math.random() * 10 - 3).toFixed(2), // 美团
-                '09988': (Math.random() * 8 - 2).toFixed(2),  // 阿里巴巴
-                '01810': (Math.random() * 6 - 2).toFixed(2),  // 小米集团
-                '02318': (Math.random() * 5 - 1).toFixed(2),  // 中国平安
-                '00005': (Math.random() * 4 - 1).toFixed(2),  // 汇丰控股
-                '02313': (Math.random() * 5 - 2).toFixed(2),  // 申洲国际
-                '00939': (Math.random() * 4 - 1).toFixed(2),  // 建设银行
-                '00941': (Math.random() * 4 - 1).toFixed(2),  // 中国移动
-                '01288': (Math.random() * 4 - 1).toFixed(2),  // 农业银行
-                '02628': (Math.random() * 5 - 2).toFixed(2),  // 中国人寿
-                '00388': (Math.random() * 5 - 2).toFixed(2),  // 香港交易所
-                '01109': (Math.random() * 6 - 2).toFixed(2),  // 华润置地
-                '00268': (Math.random() * 5 - 2).toFixed(2),  // 金蝶国际
-                '03988': (Math.random() * 4 - 1).toFixed(2),  // 中国银行
-                '00175': (Math.random() * 5 - 2).toFixed(2),  // 吉利汽车
-                '00883': (Math.random() * 5 - 2).toFixed(2),  // 中国海洋石油
-                '01024': (Math.random() * 6 - 2).toFixed(2),  // 昆仑能源
-                '00857': (Math.random() * 4 - 1).toFixed(2),  // 中国石油股份
-                '02015': (Math.random() * 7 - 2).toFixed(2),  // 理想汽车
-            };
+            // 获取港股实时数据（腾讯港股API）
+            let hkStockData = {};
+            try {
+                const hkCodes = Object.keys(HK_STOCK_MAPPING);
+                const hkQuery = hkCodes.map(code => `r_hk${code}`).join(',');
+                const response = await fetch(`https://web.sqt.gtimg.cn/q=${hkQuery}`);
+                const text = await response.text();
+                
+                // 解析腾讯港股数据格式: v_r_hk00700="状态~名称~代码~当前价~昨收~今开~..."
+                const lines = text.split('\n');
+                lines.forEach(line => {
+                    const match = line.match(/v_r_hk(\d+)="([^"]+)"/);
+                    if (match) {
+                        const code = match[1];
+                        const parts = match[2].split('~');
+                        if (parts.length >= 5) {
+                            const currentPrice = parseFloat(parts[3]) || 0;
+                            const prevClose = parseFloat(parts[4]) || 1;
+                            const changePercent = prevClose > 0 ? ((currentPrice - prevClose) / prevClose * 100) : 0;
+                            hkStockData[code] = {
+                                name: parts[1],
+                                price: currentPrice,
+                                prevClose: prevClose,
+                                changePercent: changePercent.toFixed(2)
+                            };
+                        }
+                    }
+                });
+                console.log('港股数据获取成功:', Object.keys(hkStockData).length, '只');
+            } catch (e) {
+                console.error('获取港股数据失败:', e);
+            }
 
             // 获取A股实时数据用于匹配
             const params = new URLSearchParams({
@@ -878,13 +888,11 @@
                 });
             }
 
-            // 构建港股-A股映射结果
+            // 构建港股-A股映射结果（使用真实数据）
             const hkResults = [];
-            for (const [hkCode, change] of Object.entries(hkStockChanges)) {
-                const mapping = HK_STOCK_MAPPING[hkCode];
-                if (!mapping) continue;
-
-                const hkChange = parseFloat(change);
+            for (const [hkCode, mapping] of Object.entries(HK_STOCK_MAPPING)) {
+                const realData = hkStockData[hkCode] || { changePercent: 0 };
+                const hkChange = parseFloat(realData.changePercent);
                 const cnStocksData = mapping.cnStocks.map(name => {
                     const stockData = aStockMap[name] || { name, code: '--', price: 0, changePercent: 0, mainInflow: 0 };
                     return stockData;
@@ -892,7 +900,7 @@
 
                 hkResults.push({
                     hkCode,
-                    hkName: mapping.name,
+                    hkName: realData.name || mapping.name,
                     hkChange,
                     sector: mapping.sector,
                     cnStocks: cnStocksData,
