@@ -60,7 +60,7 @@
                 🔥 热点题材
             </button>
             <button id="tabUsStock" onclick="switchTab('usStock')" class="px-4 py-3 text-center whitespace-nowrap text-gray-500">
-                🇺🇸 美股映射
+                🌍 外盘映射
             </button>
             <button id="tabRealtime" onclick="switchTab('realtime')" class="px-4 py-3 text-center whitespace-nowrap text-gray-500">
                 实时主力流入
@@ -257,9 +257,10 @@
 
     <!-- 美股映射统计栏 -->
     <div id="usStockStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
-        <div class="flex justify-around text-center">
+        <!-- 美股统计 -->
+        <div class="flex justify-around text-center mb-3 pb-3 border-b border-gray-100">
             <div>
-                <p class="text-xs text-gray-500">美股映射数</p>
+                <p class="text-xs text-gray-500">🇺🇸 美股映射</p>
                 <p id="usStockCount" class="text-lg font-bold text-blue-500">--</p>
             </div>
             <div>
@@ -273,6 +274,25 @@
             <div>
                 <p class="text-xs text-gray-500">美股下跌</p>
                 <p id="usStockFallCount" class="text-lg font-bold text-green-500">--</p>
+            </div>
+        </div>
+        <!-- 港股统计 -->
+        <div class="flex justify-around text-center">
+            <div>
+                <p class="text-xs text-gray-500">🇭🇰 港股映射</p>
+                <p id="hkStockCount" class="text-lg font-bold text-blue-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">🔥热门港股</p>
+                <p id="hkStockHotCount" class="text-lg font-bold text-orange-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">港股上涨</p>
+                <p id="hkStockRiseCount" class="text-lg font-bold text-red-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">港股下跌</p>
+                <p id="hkStockFallCount" class="text-lg font-bold text-green-500">--</p>
             </div>
         </div>
     </div>
@@ -714,13 +734,48 @@
             // 其他
             'DIS': { name: '迪士尼', cnStocks: ['中国电影', '光线传媒', '万达电影', '华谊兄弟', '芒果超媒'], sector: '传媒娱乐' },
             'NFLX': { name: '奈飞', cnStocks: ['爱奇艺', '芒果超媒', '哔哩哔哩', '优酷', '腾讯视频'], sector: '流媒体' },
-            'BA': { name: '波音', cnStocks: ['中国商飞', '中航西飞', '中航沈飞', '洪都航空', '航发动力'], sector: '航空航天' },
+            'BA': { name: '波音', cnStocks: ['中航西飞', '中航沈飞', '洪都航空', '航发动力', '中航高科'], sector: '航空航天' },
+        };
+
+        // 恒生指数成分股-A股映射关系
+        const HK_STOCK_MAPPING = {
+            // 科技互联网
+            '00700': { name: '腾讯控股', cnStocks: ['三七互娱', '完美世界', '吉比特', '巨人网络', '昆仑万维'], sector: '游戏' },
+            '09988': { name: '阿里巴巴-SW', cnStocks: ['阿里巴巴', '京东', '拼多多', '唯品会', '苏宁易购'], sector: '电商' },
+            '09999': { name: '网易-S', cnStocks: ['完美世界', '三七互娱', '巨人网络', '吉比特', '恺英网络'], sector: '游戏' },
+            '09618': { name: '京东健康', cnStocks: ['阿里健康', '平安好医生', '京东健康', '叮咚买菜', '药明康德'], sector: '互联网医疗' },
+            // 金融
+            '00005': { name: '汇丰控股', cnStocks: ['工商银行', '建设银行', '农业银行', '中国银行', '交通银行'], sector: '银行' },
+            '01299': { name: '友邦保险', cnStocks: ['中国平安', '中国人寿', '中国太保', '新华保险', '中国人保'], sector: '保险' },
+            '02318': { name: '中国平安', cnStocks: ['中国平安', '中国人寿', '中国太保', '新华保险', '中国人保'], sector: '保险' },
+            // 地产
+            '00001': { name: '长和', cnStocks: ['万科A', '保利发展', '招商蛇口', '金地集团', '新城控股'], sector: '地产' },
+            '00016': { name: '新鸿基地产', cnStocks: ['万科A', '保利发展', '招商蛇口', '金地集团', '华侨城A'], sector: '地产' },
+            '01109': { name: '华润置地', cnStocks: ['万科A', '保利发展', '招商蛇口', '华侨城A', '金地集团'], sector: '地产' },
+            // 消费
+            '00011': { name: '恒生银行', cnStocks: ['招商银行', '宁波银行', '平安银行', '兴业银行', '浦发银行'], sector: '银行' },
+            '00268': { name: '金蝶国际', cnStocks: ['用友网络', '金山办公', '广联达', '恒生电子', '致远互联'], sector: '软件' },
+            '00241': { name: '阿里健康', cnStocks: ['阿里健康', '京东健康', '平安好医生', '药明康德', '恒瑞医药'], sector: '互联网医疗' },
+            // 新能源汽车
+            '09868': { name: '小鹏汽车-W', cnStocks: ['小鹏汽车', '比亚迪', '宁德时代', '恩捷股份', '天赐材料'], sector: '新能源汽车' },
+            '09866': { name: '蔚来-SW', cnStocks: ['蔚来', '比亚迪', '宁德时代', '恩捷股份', '拓普集团'], sector: '新能源汽车' },
+            '03333': { name: '中国恒大', cnStocks: ['万科A', '保利发展', '招商蛇口', '金地集团', '新城控股'], sector: '地产' },
+            // 生物医药
+            '02269': { name: '药明生物', cnStocks: ['药明康德', '药明生物', '凯莱英', '泰格医药', '康龙化成'], sector: 'CXO' },
+            '01093': { name: '石药集团', cnStocks: ['恒瑞医药', '复星医药', '华东医药', '石药集团', '中国生物制药'], sector: '创新药' },
+            '01177': { name: '中国生物制药', cnStocks: ['中国生物制药', '恒瑞医药', '复星医药', '华东医药', '石药集团'], sector: '创新药' },
+            // 基建能源
+            '00883': { name: '中国海洋石油', cnStocks: ['中国海油', '中国石油', '中国石化', '中海油服', '海油工程'], sector: '石油' },
+            '00939': { name: '建设银行', cnStocks: ['建设银行', '工商银行', '农业银行', '中国银行', '交通银行'], sector: '银行' },
+            '01398': { name: '工商银行', cnStocks: ['工商银行', '建设银行', '农业银行', '中国银行', '交通银行'], sector: '银行' },
+            // 物流
+            '02618': { name: '京东物流', cnStocks: ['顺丰控股', '圆通速递', '韵达股份', '申通快递', '中通快递'], sector: '物流' },
+            '00285': { name: '比亚迪电子', cnStocks: ['比亚迪', '立讯精密', '歌尔股份', '蓝思科技', '东山精密'], sector: '消费电子' },
         };
 
         // 获取美股映射数据
         async function fetchUsStockMapData() {
             // 模拟美股涨跌幅数据（实际需要美股API）
-            // 由于跨域限制，这里使用模拟数据，真实场景需要后端代理
             const usStockChanges = {
                 'AAPL': (Math.random() * 6 - 2).toFixed(2),
                 'TSLA': (Math.random() * 10 - 3).toFixed(2),
@@ -746,8 +801,30 @@
                 'BA': (Math.random() * 5 - 2).toFixed(2),
             };
 
-            const results = [];
-            
+            // 模拟港股涨跌幅数据（实际需要港股API）
+            const hkStockChanges = {
+                '00700': (Math.random() * 6 - 2).toFixed(2),  // 腾讯控股
+                '03690': (Math.random() * 10 - 3).toFixed(2), // 美团
+                '09988': (Math.random() * 8 - 2).toFixed(2),  // 阿里巴巴
+                '01810': (Math.random() * 6 - 2).toFixed(2),  // 小米集团
+                '02318': (Math.random() * 5 - 1).toFixed(2),  // 中国平安
+                '00005': (Math.random() * 4 - 1).toFixed(2),  // 汇丰控股
+                '02313': (Math.random() * 5 - 2).toFixed(2),  // 申洲国际
+                '00939': (Math.random() * 4 - 1).toFixed(2),  // 建设银行
+                '00941': (Math.random() * 4 - 1).toFixed(2),  // 中国移动
+                '01288': (Math.random() * 4 - 1).toFixed(2),  // 农业银行
+                '02628': (Math.random() * 5 - 2).toFixed(2),  // 中国人寿
+                '00388': (Math.random() * 5 - 2).toFixed(2),  // 香港交易所
+                '01109': (Math.random() * 6 - 2).toFixed(2),  // 华润置地
+                '00268': (Math.random() * 5 - 2).toFixed(2),  // 金蝶国际
+                '03988': (Math.random() * 4 - 1).toFixed(2),  // 中国银行
+                '00175': (Math.random() * 5 - 2).toFixed(2),  // 吉利汽车
+                '00883': (Math.random() * 5 - 2).toFixed(2),  // 中国海洋石油
+                '01024': (Math.random() * 6 - 2).toFixed(2),  // 昆仑能源
+                '00857': (Math.random() * 4 - 1).toFixed(2),  // 中国石油股份
+                '02015': (Math.random() * 7 - 2).toFixed(2),  // 理想汽车
+            };
+
             // 获取A股实时数据用于匹配
             const params = new URLSearchParams({
                 pn: '1', pz: '500', po: '1', np: '1',
@@ -779,6 +856,7 @@
             }
 
             // 构建美股-A股映射结果
+            const usResults = [];
             for (const [usCode, change] of Object.entries(usStockChanges)) {
                 const mapping = US_STOCK_MAPPING[usCode];
                 if (!mapping) continue;
@@ -789,19 +867,45 @@
                     return stockData;
                 });
 
-                results.push({
+                usResults.push({
                     usCode,
                     usName: mapping.name,
                     usChange,
                     sector: mapping.sector,
                     cnStocks: cnStocksData,
                     updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-                    isHot: Math.abs(usChange) >= 3 // 涨跌幅>=3%标记为热门
+                    isHot: Math.abs(usChange) >= 3
                 });
             }
 
-            // 按美股涨跌幅绝对值排序
-            return results.sort((a, b) => Math.abs(b.usChange) - Math.abs(a.usChange));
+            // 构建港股-A股映射结果
+            const hkResults = [];
+            for (const [hkCode, change] of Object.entries(hkStockChanges)) {
+                const mapping = HK_STOCK_MAPPING[hkCode];
+                if (!mapping) continue;
+
+                const hkChange = parseFloat(change);
+                const cnStocksData = mapping.cnStocks.map(name => {
+                    const stockData = aStockMap[name] || { name, code: '--', price: 0, changePercent: 0, mainInflow: 0 };
+                    return stockData;
+                });
+
+                hkResults.push({
+                    hkCode,
+                    hkName: mapping.name,
+                    hkChange,
+                    sector: mapping.sector,
+                    cnStocks: cnStocksData,
+                    updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                    isHot: Math.abs(hkChange) >= 3
+                });
+            }
+
+            // 返回美股和港股数据
+            return {
+                usStocks: usResults.sort((a, b) => Math.abs(b.usChange) - Math.abs(a.usChange)),
+                hkStocks: hkResults.sort((a, b) => Math.abs(b.hkChange) - Math.abs(a.hkChange))
+            };
         }
 
         // 获取热点题材概念板块数据
@@ -1369,47 +1473,137 @@
                 `;
                 return;
             }
+            
+            // 检查是否为新格式数据（包含usStocks和hkStocks）
+            const isNewFormat = data.usStocks !== undefined || data.hkStocks !== undefined;
+            
+            if (isNewFormat) {
+                const usStocks = data.usStocks || [];
+                const hkStocks = data.hkStocks || [];
+                
+                if (usStocks.length === 0 && hkStocks.length === 0) {
+                    listEl.innerHTML = '<div class="flex flex-col items-center justify-center py-20"><p class="text-gray-500">暂无外盘映射数据</p></div>';
+                    return;
+                }
 
-            listEl.innerHTML = data.map((item, index) => {
-                const cnStocksHtml = item.cnStocks.map(s => `
-                    <div class="flex items-center justify-between py-1 px-2 rounded ${s.changePercent >= 0 ? 'bg-red-50' : 'bg-green-50'}">
-                        <span class="text-xs font-medium">${s.name}</span>
-                        <span class="${s.changePercent >= 0 ? 'rise' : 'fall'} text-xs font-bold">${formatChange(s.changePercent)}</span>
-                    </div>
-                `).join('');
-
-                return `
-                <div class="bg-white rounded-lg shadow-sm border ${item.isHot ? 'border-orange-300' : 'border-gray-100'} p-4 mb-3">
-                    <div class="flex items-center justify-between mb-3">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-full flex items-center justify-center ${item.usChange >= 0 ? 'bg-red-500' : 'bg-green-500'}">
-                                <span class="text-white text-xs font-bold">🇺🇸</span>
-                            </div>
-                            <div>
-                                <p class="text-base font-semibold text-gray-900">${item.usName}</p>
-                                <p class="text-xs text-gray-500">${item.usCode} · ${item.sector}</p>
-                            </div>
+                const usStocksHtml = usStocks.length > 0 ? `
+                    <div class="mb-6">
+                        <div class="flex items-center gap-2 mb-3 px-1">
+                            <span class="text-lg">🇺🇸</span>
+                            <h3 class="text-base font-bold text-gray-800">美股映射</h3>
+                            <span class="text-xs text-gray-400 ml-auto">${usStocks.length}只</span>
                         </div>
-                        <div class="text-right">
-                            <div class="px-3 py-1 rounded-lg ${item.usChange >= 0 ? 'bg-red-100' : 'bg-green-100'}">
-                                <span class="text-lg font-bold ${item.usChange >= 0 ? 'rise' : 'fall'}">${item.usChange >= 0 ? '+' : ''}${item.usChange}%</span>
-                            </div>
-                            ${item.isHot ? '<span class="text-xs text-orange-500 font-medium">🔥 热门</span>' : ''}
+                        <div class="space-y-3">
+                            ${usStocks.map(item => renderUsStockCard(item)).join('')}
                         </div>
                     </div>
-                    
-                    <!-- 对应A股 -->
-                    <div class="bg-gray-50 rounded-lg p-3">
-                        <div class="flex items-center justify-between mb-2">
-                            <p class="text-xs text-gray-500">🇨🇳 对应A股概念股</p>
-                            <span class="text-xs text-gray-400">${item.updateTime}</span>
+                ` : '';
+
+                const hkStocksHtml = hkStocks.length > 0 ? `
+                    <div class="mb-6">
+                        <div class="flex items-center gap-2 mb-3 px-1">
+                            <span class="text-lg">🇭🇰</span>
+                            <h3 class="text-base font-bold text-gray-800">恒生指数映射</h3>
+                            <span class="text-xs text-gray-400 ml-auto">${hkStocks.length}只</span>
                         </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            ${cnStocksHtml}
+                        <div class="space-y-3">
+                            ${hkStocks.map(item => renderHkStockCard(item)).join('')}
                         </div>
+                    </div>
+                ` : '';
+
+                listEl.innerHTML = usStocksHtml + hkStocksHtml;
+                updateUsStockStats(data);
+                return;
+            }
+
+            listEl.innerHTML = data.map(item => renderUsStockCard(item)).join('');
+        }
+
+        // 渲染美股卡片
+        function renderUsStockCard(item) {
+            const cnStocksHtml = item.cnStocks.map(s => `
+                <div class="flex items-center justify-between py-1 px-2 rounded ${s.changePercent >= 0 ? 'bg-red-50' : 'bg-green-50'}">
+                    <span class="text-xs font-medium">${s.name}</span>
+                    <span class="${s.changePercent >= 0 ? 'rise' : 'fall'} text-xs font-bold">${formatChange(s.changePercent)}</span>
+                </div>
+            `).join('');
+
+            return `
+            <div class="bg-white rounded-lg shadow-sm border ${item.isHot ? 'border-orange-300' : 'border-gray-100'} p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center ${item.usChange >= 0 ? 'bg-red-500' : 'bg-green-500'}">
+                            <span class="text-white text-xs font-bold">🇺🇸</span>
+                        </div>
+                        <div>
+                            <p class="text-base font-semibold text-gray-900">${item.usName}</p>
+                            <p class="text-xs text-gray-500">${item.usCode} · ${item.sector}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="px-3 py-1 rounded-lg ${item.usChange >= 0 ? 'bg-red-100' : 'bg-green-100'}">
+                            <span class="text-lg font-bold ${item.usChange >= 0 ? 'rise' : 'fall'}">${item.usChange >= 0 ? '+' : ''}${item.usChange}%</span>
+                        </div>
+                        ${item.isHot ? '<span class="text-xs text-orange-500 font-medium">🔥 热门</span>' : ''}
                     </div>
                 </div>
-            `}).join('');
+                
+                <!-- 对应A股 -->
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-xs text-gray-500">🇨🇳 对应A股概念股</p>
+                        <span class="text-xs text-gray-400">${item.updateTime}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        ${cnStocksHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+        }
+
+        // 渲染港股卡片
+        function renderHkStockCard(item) {
+            const cnStocksHtml = item.cnStocks.map(s => `
+                <div class="flex items-center justify-between py-1 px-2 rounded ${s.changePercent >= 0 ? 'bg-red-50' : 'bg-green-50'}">
+                    <span class="text-xs font-medium">${s.name}</span>
+                    <span class="${s.changePercent >= 0 ? 'rise' : 'fall'} text-xs font-bold">${formatChange(s.changePercent)}</span>
+                </div>
+            `).join('');
+
+            return `
+            <div class="bg-white rounded-lg shadow-sm border ${item.isHot ? 'border-orange-300' : 'border-gray-100'} p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center ${item.hkChange >= 0 ? 'bg-red-500' : 'bg-green-500'}">
+                            <span class="text-white text-xs font-bold">🇭🇰</span>
+                        </div>
+                        <div>
+                            <p class="text-base font-semibold text-gray-900">${item.hkName}</p>
+                            <p class="text-xs text-gray-500">${item.hkCode} · ${item.sector}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="px-3 py-1 rounded-lg ${item.hkChange >= 0 ? 'bg-red-100' : 'bg-green-100'}">
+                            <span class="text-lg font-bold ${item.hkChange >= 0 ? 'rise' : 'fall'}">${item.hkChange >= 0 ? '+' : ''}${item.hkChange}%</span>
+                        </div>
+                        ${item.isHot ? '<span class="text-xs text-orange-500 font-medium">🔥 热门</span>' : ''}
+                    </div>
+                </div>
+                
+                <!-- 对应A股 -->
+                <div class="bg-gray-50 rounded-lg p-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-xs text-gray-500">🇨🇳 对应A股概念股</p>
+                        <span class="text-xs text-gray-400">${item.updateTime}</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        ${cnStocksHtml}
+                    </div>
+                </div>
+            </div>
+        `;
         }
 
         // 更新美股映射统计
@@ -1417,14 +1611,31 @@
             const statsBar = document.getElementById('usStockStatsBar');
             if (!statsBar) return;
 
-            const hotCount = data.filter(d => d.isHot).length;
-            const usRiseCount = data.filter(d => d.usChange > 0).length;
-            const usFallCount = data.filter(d => d.usChange < 0).length;
+            // 支持新格式（包含usStocks和hkStocks）
+            const usStocks = data.usStocks || data;
+            const hkStocks = data.hkStocks || [];
 
-            document.getElementById('usStockCount').textContent = data.length;
-            document.getElementById('usStockHotCount').textContent = hotCount;
+            const usHotCount = usStocks.filter(d => d.isHot).length;
+            const usRiseCount = usStocks.filter(d => d.usChange > 0).length;
+            const usFallCount = usStocks.filter(d => d.usChange < 0).length;
+
+            const hkHotCount = hkStocks.filter(d => d.isHot).length;
+            const hkRiseCount = hkStocks.filter(d => d.hkChange > 0).length;
+            const hkFallCount = hkStocks.filter(d => d.hkChange < 0).length;
+
+            // 更新美股统计
+            document.getElementById('usStockCount').textContent = usStocks.length;
+            document.getElementById('usStockHotCount').textContent = usHotCount;
             document.getElementById('usStockRiseCount').textContent = usRiseCount;
             document.getElementById('usStockFallCount').textContent = usFallCount;
+            
+            // 更新港股统计
+            if (document.getElementById('hkStockCount')) {
+                document.getElementById('hkStockCount').textContent = hkStocks.length;
+                document.getElementById('hkStockHotCount').textContent = hkHotCount;
+                document.getElementById('hkStockRiseCount').textContent = hkRiseCount;
+                document.getElementById('hkStockFallCount').textContent = hkFallCount;
+            }
         }
 
         // 渲染股票列表
