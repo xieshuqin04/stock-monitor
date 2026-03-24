@@ -122,8 +122,11 @@
             </div>
             <!-- 第三行：刷新按钮 -->
             <div class="flex items-center gap-3 pt-2 border-t border-gray-100">
-                <button onclick="fetchStockData()" class="flex-1 py-2 border border-blue-500 text-blue-500 rounded-lg font-medium text-sm">
-                    🔄 刷新数据
+                <button id="refreshDataBtn" onclick="toggleRefreshData()" class="flex-1 py-2 bg-blue-500 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    <span>刷新数据</span>
                 </button>
             </div>
         </div>
@@ -267,7 +270,7 @@
                 </label>
                 <span id="usStockRefreshStatus" class="text-xs text-gray-400">已关闭</span>
             </div>
-            <button onclick="manualRefreshUsStock()" class="flex items-center gap-1 px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 active:scale-95 transition-all">
+            <button id="usStockRefreshBtn" onclick="toggleUsStockRefresh()" class="flex items-center gap-1 px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 active:scale-95 transition-all">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
                 </svg>
@@ -385,6 +388,9 @@
         let isAuctionMonitoring = false;  // 集合竞价监控状态
         let isTradingMonitoring = false;  // 开盘时间监控状态
         let isUsStockAutoRefresh = false; // 外盘映射自动刷新状态
+        let isUsStockRefreshing = false;  // 外盘映射刷新状态
+        let isRefreshing = false;         // 数据刷新状态
+        let refreshInterval = null;       // 数据刷新定时器
         let auctionInterval = null;       // 集合竞价定时器
         let tradingInterval = null;       // 开盘时间定时器
         let usStockInterval = null;       // 外盘映射定时器
@@ -407,6 +413,49 @@
             if (value === null || value === undefined || isNaN(value)) return '--';
             const sign = value >= 0 ? '+' : '';
             return sign + value.toFixed(2) + '%';
+        }
+
+        // 切换数据刷新状态
+        function toggleRefreshData() {
+            const btn = document.getElementById('refreshDataBtn');
+            
+            if (isRefreshing) {
+                // 停止刷新
+                isRefreshing = false;
+                btn.innerHTML = `
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    <span>刷新数据</span>
+                `;
+                btn.classList.remove('bg-red-500', 'hover:bg-red-600');
+                btn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+                
+                if (refreshInterval) {
+                    clearInterval(refreshInterval);
+                    refreshInterval = null;
+                }
+            } else {
+                // 开始刷新
+                isRefreshing = true;
+                btn.innerHTML = `
+                    <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12a3 3 0 106 0 3 3 0 00-6 0z"/>
+                    </svg>
+                    <span>停止刷新</span>
+                `;
+                btn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+                btn.classList.add('bg-red-500', 'hover:bg-red-600');
+                
+                // 立即刷新一次
+                fetchStockData();
+                
+                // 每5秒刷新一次
+                refreshInterval = setInterval(() => {
+                    fetchStockData();
+                }, 5000);
+            }
         }
 
         // 判断是否在集合竞价时段 (9:15-9:25)
@@ -2208,10 +2257,50 @@
             }
         }
 
-        // 手动刷新外盘数据
-        function manualRefreshUsStock() {
-            if (currentTab === 'usStock') {
-                fetchStockData();
+        // 切换外盘映射刷新状态
+        function toggleUsStockRefresh() {
+            const btn = document.getElementById('usStockRefreshBtn');
+            
+            if (isUsStockRefreshing) {
+                // 停止刷新
+                isUsStockRefreshing = false;
+                btn.innerHTML = `
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    <span>刷新</span>
+                `;
+                btn.classList.remove('bg-red-500', 'hover:bg-red-600');
+                btn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+                
+                if (usStockInterval) {
+                    clearInterval(usStockInterval);
+                    usStockInterval = null;
+                }
+            } else {
+                // 开始刷新
+                isUsStockRefreshing = true;
+                btn.innerHTML = `
+                    <svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12a3 3 0 106 0 3 3 0 00-6 0z"/>
+                    </svg>
+                    <span>停止</span>
+                `;
+                btn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+                btn.classList.add('bg-red-500', 'hover:bg-red-600');
+                
+                // 立即刷新一次
+                if (currentTab === 'usStock') {
+                    fetchStockData();
+                }
+                
+                // 每10秒刷新一次外盘数据
+                usStockInterval = setInterval(() => {
+                    if (currentTab === 'usStock') {
+                        fetchStockData();
+                    }
+                }, 10000);
             }
         }
 
