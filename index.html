@@ -116,7 +116,7 @@
             badge.querySelector('span').textContent = isCallAuction ? '交易中' : '非交易时段';
         }
 
-        // 获取股票数据
+        // 获取股票数据（直接调用东方财富API）
         async function fetchStockData() {
             const listEl = document.getElementById('stockList');
             listEl.innerHTML = `
@@ -129,21 +129,51 @@
             `;
 
             try {
-                const response = await fetch('/api/stock/main-inflow');
+                // 直接调用东方财富API
+                const params = new URLSearchParams({
+                    pn: '1',
+                    pz: '50',
+                    po: '1',
+                    np: '1',
+                    ut: 'fa5fd1943c7b386f172d6893dbfba10b',
+                    fltt: '2',
+                    invt: '2',
+                    fid: 'f62',
+                    fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
+                    fields: 'f12,f14,f2,f3,f62,f66,f6,f15,f16,f17,f18',
+                });
+
+                const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+                const response = await fetch(url);
                 const result = await response.json();
                 
-                if (result.code === 200 && result.data) {
-                    renderStockList(result.data);
+                if (result.data?.diff) {
+                    const stocks = result.data.diff
+                        .filter(item => item.f12 && item.f14)
+                        .map(item => ({
+                            code: item.f12,
+                            name: item.f14,
+                            price: parseFloat((item.f2 ?? 0) / 100),
+                            changePercent: parseFloat((item.f3 ?? 0) / 100),
+                            mainInflow: parseFloat(item.f62 ?? 0),
+                            inflowRatio: parseFloat((item.f66 ?? 0) / 100),
+                            volume: parseFloat(item.f6 ?? 0),
+                            updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                        }))
+                        .sort((a, b) => b.mainInflow - a.mainInflow);
+                    
+                    renderStockList(stocks);
                     updateLastUpdate();
                 } else {
-                    throw new Error('数据格式错误');
+                    throw new Error('数据为空');
                 }
             } catch (error) {
                 console.error('获取数据失败:', error);
                 listEl.innerHTML = `
                     <div class="flex flex-col items-center justify-center py-20">
                         <p class="text-red-500 mb-2">获取数据失败</p>
-                        <p class="text-gray-400 text-sm">请稍后重试</p>
+                        <p class="text-gray-400 text-sm mb-4">${error.message}</p>
+                        <p class="text-gray-400 text-sm">可能原因：跨域限制或网络问题</p>
                     </div>
                 `;
             }
