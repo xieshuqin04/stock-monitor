@@ -74,6 +74,9 @@
             <button id="tabAlert" onclick="switchTab('alert')" class="px-4 py-3 text-center whitespace-nowrap text-gray-500">
                 🔔 放量异动
             </button>
+            <button id="tabLateTrading" onclick="switchTab('lateTrading')" class="px-4 py-3 text-center whitespace-nowrap text-gray-500">
+                🌙 尾盘资金
+            </button>
         </div>
     </div>
 
@@ -95,6 +98,11 @@
     <!-- 放量异动说明 -->
     <div id="alertTip" class="hidden bg-pink-50 border-b border-pink-200 px-4 py-2">
         <p class="text-xs text-pink-700">🔔 检测换手率异常放大、成交量暴增、主力大额进出的股票，提示交易机会或风险</p>
+    </div>
+
+    <!-- 尾盘资金说明 -->
+    <div id="lateTradingTip" class="hidden bg-indigo-50 border-b border-indigo-200 px-4 py-2">
+        <p class="text-xs text-indigo-700">🌙 尾盘(14:30-15:00)主力资金流向对次日走势有重要参考价值，尾盘流入多预示次日高开</p>
     </div>
 
     <!-- 控制栏 - 两个独立监控开关 -->
@@ -200,6 +208,24 @@
             <div>
                 <p class="text-xs text-gray-500">主力异动</p>
                 <p id="mainAlertCount" class="text-lg font-bold text-purple-500">--</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 尾盘资金统计栏 -->
+    <div id="lateTradingStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+        <div class="flex justify-around text-center">
+            <div>
+                <p class="text-xs text-gray-500">尾盘净流入</p>
+                <p id="lateTotalInflow" class="text-lg font-bold rise">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">流入股票数</p>
+                <p id="lateInflowCount" class="text-lg font-bold text-red-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">流出股票数</p>
+                <p id="lateOutflowCount" class="text-lg font-bold text-green-500">--</p>
             </div>
         </div>
     </div>
@@ -564,11 +590,11 @@
             });
 
             // 隐藏所有统计栏和提示
-            ['statsBar', 'overnightStatsBar', 'institutionStatsBar', 'alertStatsBar', 'highOpenStatsBar', 'hotConceptStatsBar', 'usStockStatsBar'].forEach(id => {
+            ['statsBar', 'overnightStatsBar', 'institutionStatsBar', 'alertStatsBar', 'lateTradingStatsBar', 'highOpenStatsBar', 'hotConceptStatsBar', 'usStockStatsBar'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.add('hidden');
             });
-            ['overnightTip', 'institutionTip', 'alertTip', 'highOpenTip', 'hotConceptTip', 'usStockTip'].forEach(id => {
+            ['overnightTip', 'institutionTip', 'alertTip', 'lateTradingTip', 'highOpenTip', 'hotConceptTip', 'usStockTip'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.add('hidden');
             });
@@ -597,6 +623,9 @@
             } else if (tab === 'alert') {
                 document.getElementById('alertStatsBar').classList.remove('hidden');
                 document.getElementById('alertTip').classList.remove('hidden');
+            } else if (tab === 'lateTrading') {
+                document.getElementById('lateTradingStatsBar').classList.remove('hidden');
+                document.getElementById('lateTradingTip').classList.remove('hidden');
             } else {
                 document.getElementById('statsBar').classList.remove('hidden');
             }
@@ -626,7 +655,8 @@
                 realtime: '加载实时主力数据...',
                 overnight: '加载隔夜挂单数据...',
                 institution: '加载机构操盘数据...',
-                alert: '加载异动数据...'
+                alert: '加载异动数据...',
+                lateTrading: '加载尾盘资金数据...'
             };
 
             listEl.innerHTML = `
@@ -672,6 +702,10 @@
                     stocks = filterOutGEM(await fetchAlertData());
                     renderAlertList(stocks);
                     updateAlertStats(stocks);
+                } else if (currentTab === 'lateTrading') {
+                    stocks = filterOutGEM(await fetchLateTradingData());
+                    renderLateTradingList(stocks);
+                    updateLateTradingStats(stocks);
                 }
 
                 // 缓存数据用于搜索（过滤创业板）
@@ -1251,6 +1285,41 @@
                 });
         }
 
+        // 获取尾盘资金流入数据
+        // 尾盘时段: 14:30-15:00
+        async function fetchLateTradingData() {
+            const params = new URLSearchParams({
+                pn: '1', pz: '50', po: '1', np: '1',
+                ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2', fid: 'f62',
+                fs: 'm:0+t:6,m:1+t:2',
+                fields: 'f12,f14,f2,f3,f62,f66,f69,f72,f78,f84,f85,f92,f6,f8,f15,f16',
+            });
+
+            const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+            const response = await fetch(url);
+            const result = await response.json();
+
+            if (!result.data?.diff) throw new Error('数据为空');
+
+            return result.data.diff.filter(item => item.f12 && item.f14).map(item => ({
+                code: item.f12,
+                name: item.f14,
+                price: parseFloat(item.f2 ?? 0),
+                changePercent: parseFloat(item.f3 ?? 0),
+                mainInflow: parseFloat(item.f62 ?? 0),
+                inflowRatio: parseFloat(item.f66 ?? 0),
+                superInflow: parseFloat(item.f84 ?? 0),
+                bigInflow: parseFloat(item.f78 ?? 0),
+                mediumInflow: parseFloat(item.f85 ?? 0),
+                smallInflow: parseFloat(item.f92 ?? 0),
+                volume: parseFloat(item.f6 ?? 0),
+                turnoverRate: parseFloat(item.f8 ?? 0),
+                high: parseFloat(item.f15 ?? 0),
+                low: parseFloat(item.f16 ?? 0),
+                updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+            })).sort((a, b) => b.mainInflow - a.mainInflow);
+        }
+
         // 更新统计信息
         function updateStats(stocks) {
             document.getElementById('statsBar').classList.remove('hidden');
@@ -1402,6 +1471,100 @@
                     </div>
                 </div>
             `}).join('');
+        }
+
+        // 渲染尾盘资金列表
+        function renderLateTradingList(stocks) {
+            const listEl = document.getElementById('stockList');
+
+            if (stocks.length === 0) {
+                listEl.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-20">
+                        <svg class="w-12 h-12 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                        </svg>
+                        <p class="text-gray-400 text-lg mb-2">暂无尾盘数据</p>
+                        <p class="text-gray-400 text-sm">尾盘时段为14:30-15:00</p>
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = stocks.map((stock, index) => `
+                <div class="bg-white rounded-lg shadow-sm border ${stock.mainInflow > 0 ? 'border-red-100' : 'border-green-100'} p-4 cursor-pointer hover:shadow-md" onclick="showStockDetail('${stock.code}')">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center ${stock.mainInflow > 0 ? (index < 3 ? 'bg-red-500' : 'bg-red-300') : (index < 3 ? 'bg-green-500' : 'bg-green-300')}">
+                                <span class="text-white text-sm font-bold">${index + 1}</span>
+                            </div>
+                            <div>
+                                <p class="text-base font-semibold text-gray-900">${stock.code}</p>
+                                <p class="text-sm text-gray-600">${stock.name}</p>
+                            </div>
+                        </div>
+                        <div class="flex flex-col items-end">
+                            <span class="text-lg font-bold ${stock.changePercent >= 0 ? 'rise' : 'fall'}">${formatChange(stock.changePercent)}</span>
+                            <span class="text-sm text-gray-500">¥${stock.price.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-gray-600">尾盘主力净流入</span>
+                            <span class="text-xl font-bold ${stock.mainInflow >= 0 ? 'rise' : 'fall'}">${stock.mainInflow >= 0 ? '+' : ''}${formatAmount(stock.mainInflow)}</span>
+                        </div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-gray-600">主力净占比</span>
+                            <span class="text-base font-semibold text-blue-500">${stock.inflowRatio.toFixed(2)}%</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-200 text-center">
+                            <div>
+                                <p class="text-xs text-gray-500">超大单</p>
+                                <p class="text-sm font-bold ${stock.superInflow >= 0 ? 'rise' : 'fall'}">${stock.superInflow >= 0 ? '+' : ''}${formatAmount(stock.superInflow)}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500">大单</p>
+                                <p class="text-sm font-bold ${stock.bigInflow >= 0 ? 'rise' : 'fall'}">${stock.bigInflow >= 0 ? '+' : ''}${formatAmount(stock.bigInflow)}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500">换手率</p>
+                                <p class="text-sm font-medium text-gray-700">${stock.turnoverRate.toFixed(2)}%</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                        <div>
+                            <p class="text-xs text-gray-500">最高</p>
+                            <p class="text-sm font-medium rise">¥${stock.high.toFixed(2)}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">最低</p>
+                            <p class="text-sm font-medium fall">¥${stock.low.toFixed(2)}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">成交额</p>
+                            <p class="text-sm font-medium text-gray-700">${formatAmount(stock.volume)}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">更新</p>
+                            <p class="text-sm text-gray-500">${stock.updateTime}</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 更新尾盘资金统计
+        function updateLateTradingStats(stocks) {
+            const totalInflow = stocks.reduce((sum, s) => sum + s.mainInflow, 0);
+            const inflowCount = stocks.filter(s => s.mainInflow > 0).length;
+            const outflowCount = stocks.filter(s => s.mainInflow < 0).length;
+
+            const totalEl = document.getElementById('lateTotalInflow');
+            totalEl.textContent = (totalInflow >= 0 ? '+' : '') + formatAmount(totalInflow);
+            totalEl.className = `text-lg font-bold ${totalInflow >= 0 ? 'rise' : 'fall'}`;
+
+            document.getElementById('lateInflowCount').textContent = inflowCount;
+            document.getElementById('lateOutflowCount').textContent = outflowCount;
         }
 
         // 更新高开统计
