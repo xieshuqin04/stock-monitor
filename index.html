@@ -77,6 +77,9 @@
             <button id="tabLateTrading" onclick="switchTab('lateTrading')" class="px-4 py-3 text-center whitespace-nowrap text-gray-500">
                 🌙 尾盘资金
             </button>
+            <button id="tabWatchlist" onclick="switchTab('watchlist')" class="px-4 py-3 text-center whitespace-nowrap text-gray-500">
+                ⭐ 自选盯盘
+            </button>
         </div>
     </div>
 
@@ -103,6 +106,11 @@
     <!-- 尾盘资金说明 -->
     <div id="lateTradingTip" class="hidden bg-indigo-50 border-b border-indigo-200 px-4 py-2">
         <p class="text-xs text-indigo-700">🌙 尾盘(14:30-15:00)主力资金流向对次日走势有重要参考价值，尾盘流入多预示次日高开</p>
+    </div>
+
+    <!-- 自选盯盘说明 -->
+    <div id="watchlistTip" class="hidden bg-amber-50 border-b border-amber-200 px-4 py-2">
+        <p class="text-xs text-amber-700">⭐ 添加自选股实时监控，检测异常动作（大额资金进出、快速拉升/下跌、放量异动等）及时提醒</p>
     </div>
 
     <!-- 控制栏 - 两个独立监控开关 -->
@@ -228,6 +236,41 @@
                 <p id="lateOutflowCount" class="text-lg font-bold text-green-500">--</p>
             </div>
         </div>
+    </div>
+
+    <!-- 自选股统计栏 -->
+    <div id="watchlistStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+        <div class="flex justify-around text-center">
+            <div>
+                <p class="text-xs text-gray-500">监控股票</p>
+                <p id="watchlistCount" class="text-lg font-bold text-blue-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">异常股票</p>
+                <p id="abnormalCount" class="text-lg font-bold text-orange-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">上涨</p>
+                <p id="watchlistRiseCount" class="text-lg font-bold text-red-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">下跌</p>
+                <p id="watchlistFallCount" class="text-lg font-bold text-green-500">--</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 自选股添加区域 -->
+    <div id="watchlistAddArea" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+        <div class="flex items-center gap-2">
+            <input id="watchlistInput" type="text" placeholder="输入股票代码或名称（如：600519 或 茅台）"
+                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onkeypress="if(event.key==='Enter')addToWatchlist()">
+            <button onclick="addToWatchlist()" class="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600">
+                添加
+            </button>
+        </div>
+        <div id="watchlistSearchResults" class="mt-2 max-h-32 overflow-y-auto hidden"></div>
     </div>
 
     <!-- 高开统计栏 -->
@@ -590,11 +633,11 @@
             });
 
             // 隐藏所有统计栏和提示
-            ['statsBar', 'overnightStatsBar', 'institutionStatsBar', 'alertStatsBar', 'lateTradingStatsBar', 'highOpenStatsBar', 'hotConceptStatsBar', 'usStockStatsBar'].forEach(id => {
+            ['statsBar', 'overnightStatsBar', 'institutionStatsBar', 'alertStatsBar', 'lateTradingStatsBar', 'watchlistStatsBar', 'watchlistAddArea', 'highOpenStatsBar', 'hotConceptStatsBar', 'usStockStatsBar'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.add('hidden');
             });
-            ['overnightTip', 'institutionTip', 'alertTip', 'lateTradingTip', 'highOpenTip', 'hotConceptTip', 'usStockTip'].forEach(id => {
+            ['overnightTip', 'institutionTip', 'alertTip', 'lateTradingTip', 'watchlistTip', 'highOpenTip', 'hotConceptTip', 'usStockTip'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.add('hidden');
             });
@@ -626,6 +669,10 @@
             } else if (tab === 'lateTrading') {
                 document.getElementById('lateTradingStatsBar').classList.remove('hidden');
                 document.getElementById('lateTradingTip').classList.remove('hidden');
+            } else if (tab === 'watchlist') {
+                document.getElementById('watchlistStatsBar').classList.remove('hidden');
+                document.getElementById('watchlistAddArea').classList.remove('hidden');
+                document.getElementById('watchlistTip').classList.remove('hidden');
             } else {
                 document.getElementById('statsBar').classList.remove('hidden');
             }
@@ -656,7 +703,8 @@
                 overnight: '加载隔夜挂单数据...',
                 institution: '加载机构操盘数据...',
                 alert: '加载异动数据...',
-                lateTrading: '加载尾盘资金数据...'
+                lateTrading: '加载尾盘资金数据...',
+                watchlist: '加载自选股数据...'
             };
 
             listEl.innerHTML = `
@@ -706,6 +754,10 @@
                     stocks = filterOutGEM(await fetchLateTradingData());
                     renderLateTradingList(stocks);
                     updateLateTradingStats(stocks);
+                } else if (currentTab === 'watchlist') {
+                    stocks = await fetchWatchlistData();
+                    renderWatchlist(stocks);
+                    updateWatchlistStats(stocks);
                 }
 
                 // 缓存数据用于搜索（过滤创业板）
@@ -1567,6 +1619,412 @@
             document.getElementById('lateOutflowCount').textContent = outflowCount;
         }
 
+        // ============ 自选股盯盘功能 ============
+        let watchlist = JSON.parse(localStorage.getItem('stockWatchlist') || '[]');
+        let previousWatchlistData = {}; // 用于比对异常
+
+        // 加载自选股列表
+        function loadWatchlist() {
+            watchlist = JSON.parse(localStorage.getItem('stockWatchlist') || '[]');
+            return watchlist;
+        }
+
+        // 保存自选股列表
+        function saveWatchlist() {
+            localStorage.setItem('stockWatchlist', JSON.stringify(watchlist));
+        }
+
+        // 添加股票到自选
+        async function addToWatchlist() {
+            const input = document.getElementById('watchlistInput');
+            const keyword = input.value.trim().toUpperCase();
+            if (!keyword) return;
+
+            // 搜索股票
+            const searchResults = await searchWatchlistStock(keyword);
+            if (searchResults.length === 0) {
+                alert('未找到匹配的股票');
+                return;
+            }
+
+            // 如果只有一个结果，直接添加
+            if (searchResults.length === 1) {
+                addStockToWatchlist(searchResults[0]);
+                input.value = '';
+                document.getElementById('watchlistSearchResults').classList.add('hidden');
+            } else {
+                // 显示多个结果供选择
+                showWatchlistSearchResults(searchResults);
+            }
+        }
+
+        // 搜索股票
+        async function searchWatchlistStock(keyword) {
+            // 先从缓存搜索
+            let results = allStocksCache.filter(s =>
+                s.code.includes(keyword) || s.name.includes(keyword)
+            );
+
+            if (results.length === 0) {
+                try {
+                    const params = new URLSearchParams({
+                        pn: '1', pz: '10', po: '1', np: '1',
+                        ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2',
+                        fs: 'm:0+t:6,m:1+t:2',
+                        fields: 'f12,f14,f2,f3',
+                    });
+                    const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+                    const response = await fetch(url);
+                    const result = await response.json();
+                    if (result.data?.diff) {
+                        results = result.data.diff
+                            .filter(item => item.f12 && item.f14)
+                            .filter(item =>
+                                (item.f12 ?? '').toString().includes(keyword) ||
+                                (item.f14 ?? '').toString().includes(keyword)
+                            )
+                            .map(item => ({
+                                code: item.f12,
+                                name: item.f14,
+                                price: parseFloat(item.f2 ?? 0),
+                                changePercent: parseFloat(item.f3 ?? 0)
+                            }));
+                    }
+                } catch (e) {
+                    console.error('搜索失败:', e);
+                }
+            }
+
+            return results.slice(0, 10);
+        }
+
+        // 显示搜索结果
+        function showWatchlistSearchResults(results) {
+            const resultsEl = document.getElementById('watchlistSearchResults');
+            resultsEl.classList.remove('hidden');
+            resultsEl.innerHTML = results.map(s => `
+                <div class="p-2 border-b border-gray-100 cursor-pointer hover:bg-blue-50 rounded flex justify-between items-center"
+                     onclick="addStockToWatchlist({code:'${s.code}',name:'${s.name}'})">
+                    <span class="text-sm"><b>${s.code}</b> ${s.name}</span>
+                    <span class="${s.changePercent >= 0 ? 'rise' : 'fall'} text-sm">${formatChange(s.changePercent || 0)}</span>
+                </div>
+            `).join('');
+        }
+
+        // 添加股票到自选列表
+        function addStockToWatchlist(stock) {
+            if (watchlist.some(s => s.code === stock.code)) {
+                alert('该股票已在自选列表中');
+                return;
+            }
+            watchlist.push({ code: stock.code, name: stock.name, addTime: Date.now() });
+            saveWatchlist();
+            document.getElementById('watchlistInput').value = '';
+            document.getElementById('watchlistSearchResults').classList.add('hidden');
+            fetchStockData();
+        }
+
+        // 从自选列表移除
+        function removeFromWatchlist(code) {
+            if (confirm(`确定移除 ${code} 吗？`)) {
+                watchlist = watchlist.filter(s => s.code !== code);
+                saveWatchlist();
+                delete previousWatchlistData[code];
+                fetchStockData();
+            }
+        }
+
+        // 获取自选股数据
+        async function fetchWatchlistData() {
+            if (watchlist.length === 0) return [];
+
+            const codes = watchlist.map(s => s.code);
+            const results = [];
+
+            // 批量获取股票数据
+            for (let i = 0; i < codes.length; i += 50) {
+                const batch = codes.slice(i, i + 50);
+                try {
+                    const params = new URLSearchParams({
+                        pn: '1', pz: '50', po: '1', np: '1',
+                        ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2',
+                        fs: 'm:0+t:6,m:1+t:2',
+                        fields: 'f12,f14,f2,f3,f62,f66,f69,f72,f78,f84,f85,f92,f6,f8,f15,f16,f17,f18',
+                    });
+                    const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+                    const response = await fetch(url);
+                    const result = await response.json();
+                    if (result.data?.diff) {
+                        result.data.diff
+                            .filter(item => batch.includes(item.f12))
+                            .forEach(item => {
+                                const stockInfo = watchlist.find(s => s.code === item.f12);
+                                results.push({
+                                    code: item.f12,
+                                    name: item.f14,
+                                    price: parseFloat(item.f2 ?? 0),
+                                    changePercent: parseFloat(item.f3 ?? 0),
+                                    mainInflow: parseFloat(item.f62 ?? 0),
+                                    inflowRatio: parseFloat(item.f66 ?? 0),
+                                    superInflow: parseFloat(item.f84 ?? 0),
+                                    bigInflow: parseFloat(item.f78 ?? 0),
+                                    mediumInflow: parseFloat(item.f85 ?? 0),
+                                    smallInflow: parseFloat(item.f92 ?? 0),
+                                    volume: parseFloat(item.f6 ?? 0),
+                                    turnoverRate: parseFloat(item.f8 ?? 0),
+                                    high: parseFloat(item.f15 ?? 0),
+                                    low: parseFloat(item.f16 ?? 0),
+                                    open: parseFloat(item.f17 ?? 0),
+                                    prevClose: parseFloat(item.f18 ?? 0),
+                                    addTime: stockInfo?.addTime,
+                                    updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                                });
+                            });
+                    }
+                } catch (e) {
+                    console.error('获取自选股数据失败:', e);
+                }
+            }
+
+            // 检测异常并提醒
+            checkAbnormalAndAlert(results);
+
+            return results;
+        }
+
+        // 检测异常并提醒
+        function checkAbnormalAndAlert(stocks) {
+            const alerts = [];
+
+            stocks.forEach(stock => {
+                const prev = previousWatchlistData[stock.code];
+                const alerts_stock = [];
+
+                // 如果是首次加载，记录数据后跳过
+                if (!prev) {
+                    previousWatchlistData[stock.code] = { ...stock };
+                    return;
+                }
+
+                // 1. 检测大额资金流入/流出（单次超过5000万）
+                const inflowChange = stock.mainInflow - prev.mainInflow;
+                if (Math.abs(inflowChange) > 50000000) {
+                    alerts_stock.push({
+                        type: inflowChange > 0 ? '大额流入' : '大额流出',
+                        level: 'high',
+                        detail: `${stock.name}(${stock.code}) ${inflowChange > 0 ? '流入' : '流出'} ${formatAmount(Math.abs(inflowChange))}`
+                    });
+                }
+
+                // 2. 检测快速拉升/下跌（5分钟内涨跌超过2%）
+                const priceChange = ((stock.price - prev.price) / prev.price) * 100;
+                if (Math.abs(priceChange) > 2) {
+                    alerts_stock.push({
+                        type: priceChange > 0 ? '快速拉升' : '快速下跌',
+                        level: 'high',
+                        detail: `${stock.name}(${stock.code}) ${priceChange > 0 ? '拉升' : '下跌'} ${priceChange.toFixed(2)}%`
+                    });
+                }
+
+                // 3. 检测主力资金流向反转
+                if ((prev.mainInflow > 0 && stock.mainInflow < 0) || (prev.mainInflow < 0 && stock.mainInflow > 0)) {
+                    alerts_stock.push({
+                        type: '资金反转',
+                        level: 'medium',
+                        detail: `${stock.name}(${stock.code}) 主力资金从${prev.mainInflow > 0 ? '流入' : '流出'}转为${stock.mainInflow > 0 ? '流入' : '流出'}`
+                    });
+                }
+
+                // 4. 检测换手率异常（换手率突然增加超过5%）
+                if (stock.turnoverRate - prev.turnoverRate > 5) {
+                    alerts_stock.push({
+                        type: '换手激增',
+                        level: 'medium',
+                        detail: `${stock.name}(${stock.code}) 换手率从 ${prev.turnoverRate.toFixed(2)}% 升至 ${stock.turnoverRate.toFixed(2)}%`
+                    });
+                }
+
+                // 5. 检测涨停/跌停
+                if (stock.changePercent >= 9.9 && prev.changePercent < 9.9) {
+                    alerts_stock.push({
+                        type: '封涨停',
+                        level: 'high',
+                        detail: `${stock.name}(${stock.code}) 封涨停板！`
+                    });
+                }
+                if (stock.changePercent <= -9.9 && prev.changePercent > -9.9) {
+                    alerts_stock.push({
+                        type: '封跌停',
+                        level: 'high',
+                        detail: `${stock.name}(${stock.code}) 封跌停板！`
+                    });
+                }
+
+                if (alerts_stock.length > 0) {
+                    alerts.push({ stock, alerts: alerts_stock });
+                    stock.abnormalAlerts = alerts_stock;
+                }
+
+                // 更新历史数据
+                previousWatchlistData[stock.code] = { ...stock };
+            });
+
+            // 显示异常提醒
+            if (alerts.length > 0) {
+                showAbnormalAlert(alerts);
+            }
+        }
+
+        // 显示异常提醒
+        function showAbnormalAlert(alerts) {
+            // 只显示高级别提醒
+            const highAlerts = alerts.filter(a => a.alerts.some(al => al.level === 'high'));
+            if (highAlerts.length === 0) return;
+
+            // 尝试使用浏览器通知
+            if ('Notification' in window && Notification.permission === 'granted') {
+                highAlerts.forEach(alert => {
+                    alert.alerts.filter(a => a.level === 'high').forEach(a => {
+                        new Notification('⚠️ 股票异常提醒', { body: a.detail, icon: '📊' });
+                    });
+                });
+            }
+
+            // 页面内提醒
+            const alertContainer = document.getElementById('abnormalAlertContainer') || createAlertContainer();
+            alertContainer.innerHTML = highAlerts.map(alert => `
+                <div class="bg-red-50 border-l-4 border-red-500 p-3 mb-2 rounded-r">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-bold text-red-700">${alert.alerts.filter(a => a.level === 'high').map(a => a.type).join(' / ')}</p>
+                            ${alert.alerts.filter(a => a.level === 'high').map(a => `<p class="text-sm text-red-600">${a.detail}</p>`).join('')}
+                        </div>
+                        <button onclick="this.parentElement.parentElement.remove()" class="text-gray-400 hover:text-gray-600">✕</button>
+                    </div>
+                </div>
+            `).join('') + alertContainer.innerHTML;
+            alertContainer.classList.remove('hidden');
+        }
+
+        // 创建提醒容器
+        function createAlertContainer() {
+            const container = document.createElement('div');
+            container.id = 'abnormalAlertContainer';
+            container.className = 'fixed top-16 right-4 w-80 max-h-60 overflow-y-auto z-50 space-y-2';
+            document.body.appendChild(container);
+            return container;
+        }
+
+        // 渲染自选股列表
+        function renderWatchlist(stocks) {
+            const listEl = document.getElementById('stockList');
+
+            if (watchlist.length === 0) {
+                listEl.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-20">
+                        <svg class="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                        </svg>
+                        <p class="text-gray-400 text-lg mb-2">暂无自选股</p>
+                        <p class="text-gray-400 text-sm mb-4">在上方输入框添加股票代码或名称</p>
+                    </div>
+                `;
+                return;
+            }
+
+            if (stocks.length === 0) {
+                listEl.innerHTML = `<div class="flex flex-col items-center justify-center py-20"><p class="text-gray-400">加载中...</p></div>`;
+                return;
+            }
+
+            listEl.innerHTML = stocks.map((stock, index) => {
+                const hasAbnormal = stock.abnormalAlerts && stock.abnormalAlerts.length > 0;
+                const abnormalTypes = hasAbnormal ? stock.abnormalAlerts.map(a => a.type).join(' / ') : '';
+
+                return `
+                <div class="bg-white rounded-lg shadow-sm border ${hasAbnormal ? 'border-red-300 bg-red-50' : 'border-gray-100'} p-4 mb-3">
+                    ${hasAbnormal ? `
+                        <div class="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded mb-2 inline-block">
+                            ⚠️ ${abnormalTypes}
+                        </div>
+                    ` : ''}
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center ${stock.changePercent >= 0 ? 'bg-red-500' : 'bg-green-500'}">
+                                <span class="text-white text-sm font-bold">${index + 1}</span>
+                            </div>
+                            <div>
+                                <p class="text-base font-semibold text-gray-900">${stock.code}</p>
+                                <p class="text-sm text-gray-600">${stock.name}</p>
+                            </div>
+                        </div>
+                        <div class="flex flex-col items-end">
+                            <span class="text-lg font-bold ${stock.changePercent >= 0 ? 'rise' : 'fall'}">${formatChange(stock.changePercent)}</span>
+                            <span class="text-sm text-gray-500">¥${stock.price.toFixed(2)}</span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-gray-600">主力净流入</span>
+                            <span class="text-xl font-bold ${stock.mainInflow >= 0 ? 'rise' : 'fall'}">${stock.mainInflow >= 0 ? '+' : ''}${formatAmount(stock.mainInflow)}</span>
+                        </div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-gray-600">主力净占比</span>
+                            <span class="text-base font-semibold text-blue-500">${stock.inflowRatio.toFixed(2)}%</span>
+                        </div>
+                        <div class="grid grid-cols-4 gap-2 mt-2 pt-2 border-t border-gray-200 text-center">
+                            <div>
+                                <p class="text-xs text-gray-500">超大单</p>
+                                <p class="text-sm font-bold ${stock.superInflow >= 0 ? 'rise' : 'fall'}">${stock.superInflow >= 0 ? '+' : ''}${formatAmount(stock.superInflow)}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500">大单</p>
+                                <p class="text-sm font-bold ${stock.bigInflow >= 0 ? 'rise' : 'fall'}">${stock.bigInflow >= 0 ? '+' : ''}${formatAmount(stock.bigInflow)}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500">换手率</p>
+                                <p class="text-sm font-medium text-gray-700">${stock.turnoverRate.toFixed(2)}%</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-500">成交额</p>
+                                <p class="text-sm font-medium text-gray-700">${formatAmount(stock.volume)}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                        <div class="text-xs text-gray-400">
+                            添加时间: ${stock.addTime ? new Date(stock.addTime).toLocaleString('zh-CN') : '--'}
+                        </div>
+                        <div class="flex gap-2">
+                            <span class="text-xs text-gray-400">更新: ${stock.updateTime}</span>
+                            <button onclick="removeFromWatchlist('${stock.code}')" class="text-red-500 hover:text-red-700 text-sm font-medium">
+                                移除
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        // 更新自选股统计
+        function updateWatchlistStats(stocks) {
+            document.getElementById('watchlistCount').textContent = watchlist.length;
+            const abnormalCount = stocks.filter(s => s.abnormalAlerts && s.abnormalAlerts.length > 0).length;
+            document.getElementById('abnormalCount').textContent = abnormalCount;
+            document.getElementById('watchlistRiseCount').textContent = stocks.filter(s => s.changePercent > 0).length;
+            document.getElementById('watchlistFallCount').textContent = stocks.filter(s => s.changePercent < 0).length;
+        }
+
+        // 请求通知权限
+        function requestNotificationPermission() {
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+        }
+
+        // 初始化时请求通知权限
+        requestNotificationPermission();
+
         // 更新高开统计
         function updateHighOpenStats(stocks) {
             const statsBar = document.getElementById('highOpenStatsBar');
@@ -2345,7 +2803,7 @@
                 
                 // 开盘时间每3秒刷新一次
                 tradingInterval = setInterval(() => {
-                    if (['realtime', 'overnight', 'institution', 'alert'].includes(currentTab)) {
+                    if (['realtime', 'overnight', 'institution', 'alert', 'watchlist', 'lateTrading'].includes(currentTab)) {
                         fetchStockData();
                     }
                 }, 3000);
