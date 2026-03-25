@@ -402,10 +402,13 @@
             return sign + value.toFixed(2) + '%';
         }
 
-        // 过滤创业板股票（代码以300开头的股票）
+        // 过滤创业板股票（代码以300、301开头的股票）
         function filterOutGEM(stocks) {
             if (!Array.isArray(stocks)) return stocks;
-            return stocks.filter(stock => !stock.code.startsWith('300'));
+            return stocks.filter(stock => {
+                const code = stock.code.toString();
+                return !code.startsWith('300') && !code.startsWith('301');
+            });
         }
 
         // 手动刷新数据
