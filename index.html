@@ -402,6 +402,12 @@
             return sign + value.toFixed(2) + '%';
         }
 
+        // 过滤创业板股票（代码以300开头的股票）
+        function filterOutGEM(stocks) {
+            if (!Array.isArray(stocks)) return stocks;
+            return stocks.filter(stock => !stock.code.startsWith('300'));
+        }
+
         // 手动刷新数据
         function manualRefreshData() {
             fetchStockData();
@@ -630,11 +636,11 @@
             try {
                 let stocks;
                 if (currentTab === 'auction') {
-                    stocks = await fetchCallAuctionData();
+                    stocks = filterOutGEM(await fetchCallAuctionData());
                     renderStockList(stocks);
                     updateStats(stocks);
                 } else if (currentTab === 'highOpen') {
-                    stocks = await fetchHighOpenData();
+                    stocks = filterOutGEM(await fetchHighOpenData());
                     renderHighOpenList(stocks);
                     updateHighOpenStats(stocks);
                 } else if (currentTab === 'hotConcept') {
@@ -646,25 +652,25 @@
                     renderUsStockMapList(stocks);
                     updateUsStockStats(stocks);
                 } else if (currentTab === 'realtime') {
-                    stocks = await fetchRealtimeData();
+                    stocks = filterOutGEM(await fetchRealtimeData());
                     renderStockList(stocks);
                     updateStats(stocks);
                 } else if (currentTab === 'overnight') {
-                    stocks = await fetchOvernightData();
+                    stocks = filterOutGEM(await fetchOvernightData());
                     renderOvernightList(stocks);
                     updateOvernightStats(stocks);
                 } else if (currentTab === 'institution') {
-                    stocks = await fetchInstitutionData();
+                    stocks = filterOutGEM(await fetchInstitutionData());
                     renderInstitutionList(stocks);
                     updateInstitutionStats(stocks);
                 } else if (currentTab === 'alert') {
-                    stocks = await fetchAlertData();
+                    stocks = filterOutGEM(await fetchAlertData());
                     renderAlertList(stocks);
                     updateAlertStats(stocks);
                 }
 
-                // 缓存数据用于搜索
-                allStocksCache = stocks;
+                // 缓存数据用于搜索（过滤创业板）
+                allStocksCache = filterOutGEM(stocks);
                 updateLastUpdate();
             } catch (error) {
                 console.error('获取数据失败:', error);
@@ -1995,7 +2001,7 @@
                 }
             }
 
-            showSearchResults(results);
+            showSearchResults(filterOutGEM(results));
         }
 
         // 显示搜索结果
