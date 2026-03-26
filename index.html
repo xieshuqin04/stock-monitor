@@ -1709,49 +1709,105 @@
 
         // 获取集合竞价数据
         async function fetchCallAuctionData() {
-            const params = new URLSearchParams({
-                pn: '1', pz: '50', po: '1', np: '1',
-                ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2', fid: 'f62',
-                fs: 'm:0+t:6,m:1+t:2',
-                fields: 'f12,f14,f2,f3,f62,f66,f69,f72,f78,f84,f85,f92,f6,f8,f15,f16',
-            });
+            let stocks = [];
+            let dataSource = 'eastmoney';
+            
+            // 1. 尝试Tushare数据（如果已配置Token）
+            if (TUSHARE_CONFIG.hasToken()) {
+                try {
+                    console.log('[集合竞价] 尝试从Tushare获取资金流向数据...');
+                    const tushareData = await fetchTushareMoneyFlow();
+                    
+                    if (tushareData && tushareData.length > 0) {
+                        console.log(`[集合竞价] Tushare获取到 ${tushareData.length} 条数据`);
+                        stocks = tushareData;
+                        dataSource = 'tushare';
+                        updateDataSourceStatus('tushare', 'active');
+                    }
+                } catch (error) {
+                    console.warn('[集合竞价] Tushare数据获取失败:', error.message);
+                }
+            }
+            
+            // 2. 尝试东方财富数据
+            if (stocks.length < 10) {
+                try {
+                    const params = new URLSearchParams({
+                        pn: '1', pz: '50', po: '1', np: '1',
+                        ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2', fid: 'f62',
+                        fs: 'm:0+t:6,m:1+t:2',
+                        fields: 'f12,f14,f2,f3,f62,f66,f69,f72,f78,f84,f85,f92,f6,f8,f15,f16',
+                    });
 
-            const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
-            const response = await fetch(url);
-            const result = await response.json();
+                    const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+                    const response = await fetch(url);
+                    const result = await response.json();
 
-            if (!result.data?.diff) throw new Error('数据为空');
-
-            return result.data.diff.filter(item => item.f12 && item.f14).map(item => {
-                const mainInflow = parseFloat(item.f62 ?? 0);      // 主力净流入（元）
-                const volume = parseFloat(item.f6 ?? 0);           // 成交额（元）
-                const superInflow = parseFloat(item.f84 ?? 0);     // 超大单净流入（元）
-                const bigInflow = parseFloat(item.f78 ?? 0);       // 大单净流入（元）
-                const midPercent = parseFloat(item.f85 ?? 0);      // 中单净占比（%）
-                const smallPercent = parseFloat(item.f92 ?? 0);    // 小单净占比（%）
-                
-                // 散户资金 = 成交额 * (中单占比 + 小单占比) / 100
-                // 注意：f85和f92可能是占比百分比，不是金额
-                const retailInflow = volume * (midPercent + smallPercent) / 100;
-                // 暗盘资金 = 模拟为大宗交易数据（基于主力资金的一定比例）
-                const darkPoolInflow = mainInflow * (0.1 + Math.random() * 0.15);
-                
-                return {
-                    code: item.f12, 
-                    name: item.f14, 
-                    price: parseFloat(item.f2 ?? 0),
-                    changePercent: parseFloat(item.f3 ?? 0), 
-                    mainInflow: mainInflow,
-                    retailInflow: retailInflow,
-                    darkPoolInflow: darkPoolInflow,
-                    inflowRatio: parseFloat(item.f66 ?? 0), 
-                    volume: volume,
-                    turnoverRate: parseFloat(item.f8 ?? 0), 
-                    high: parseFloat(item.f15 ?? 0),
-                    low: parseFloat(item.f16 ?? 0),
-                    updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-                };
-            }).sort((a, b) => b.mainInflow - a.mainInflow);
+                    if (result.data?.diff) {
+                        const eastmoneyStocks = result.data.diff.filter(item => item.f12 && item.f14).map(item => {
+                            const mainInflow = parseFloat(item.f62 ?? 0);
+                            const volume = parseFloat(item.f6 ?? 0);
+                            const midPercent = parseFloat(item.f85 ?? 0);
+                            const smallPercent = parseFloat(item.f92 ?? 0);
+                            const retailInflow = volume * (midPercent + smallPercent) / 100;
+                            const darkPoolInflow = mainInflow * (0.1 + Math.random() * 0.15);
+                            
+                            return {
+                                code: item.f12, name: item.f14, price: parseFloat(item.f2 ?? 0),
+                                changePercent: parseFloat(item.f3 ?? 0), mainInflow: mainInflow,
+                                retailInflow: retailInflow, darkPoolInflow: darkPoolInflow,
+                                inflowRatio: parseFloat(item.f66 ?? 0), volume: volume,
+                                turnoverRate: parseFloat(item.f8 ?? 0), high: parseFloat(item.f15 ?? 0),
+                                low: parseFloat(item.f16 ?? 0),
+                                updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                                _source: 'eastmoney'
+                            };
+                        }).sort((a, b) => b.mainInflow - a.mainInflow);
+                        
+                        if (stocks.length > 0) {
+                            stocks = mergeStockData(stocks, eastmoneyStocks);
+                            dataSource = 'mixed';
+                        } else {
+                            stocks = eastmoneyStocks;
+                            dataSource = 'eastmoney';
+                        }
+                        recordSourceResult('eastmoney', true);
+                    }
+                } catch (error) {
+                    console.warn('[集合竞价] 东方财富数据获取失败:', error.message);
+                    recordSourceResult('eastmoney', false);
+                }
+            }
+            
+            // 3. 备用数据源：新浪财经
+            if (stocks.length < 5) {
+                console.log('[集合竞价] 主数据源数据不足，尝试新浪财经...');
+                try {
+                    const hotCodes = ['600000', '600519', '000001', '000002', '600036', '601318', '600030', '000333', '002415', '601166'];
+                    const sinaData = await fetchSinaRealtimeData(hotCodes);
+                    if (sinaData.length > 0) {
+                        const sinaStocks = sinaData.map(s => ({
+                            code: s.code, name: s.name, price: s.price,
+                            changePercent: s.changePercent || 0, mainInflow: 0,
+                            volume: s.amount || 0, updateTime: s.updateTime,
+                            _source: 'sina'
+                        }));
+                        stocks = [...stocks, ...sinaStocks];
+                        dataSource = stocks.some(s => s._source === 'eastmoney') ? 'mixed' : 'sina';
+                        recordSourceResult('sina', true);
+                    }
+                } catch (error) {
+                    console.warn('[集合竞价] 新浪数据获取失败:', error.message);
+                    recordSourceResult('sina', false);
+                }
+            }
+            
+            // 更新数据源状态
+            if (dataSource !== 'eastmoney') {
+                updateDataSourceStatus(dataSource, 'active');
+            }
+            
+            return stocks;
         }
 
         // 获取实时主力流入数据（混合数据源）
@@ -1942,79 +1998,119 @@
             }).sort((a, b) => b.institutionNet - a.institutionNet);
         }
 
-        // 获取放量异动数据
+        // 获取放量异动数据（混合数据源）
         async function fetchAlertData() {
-            const params = new URLSearchParams({
-                pn: '1', pz: '100', po: '1', np: '1',
-                ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2', fid: 'f8', // 按换手率排序
-                fs: 'm:0+t:6,m:1+t:2',
-                fields: 'f12,f14,f2,f3,f62,f66,f84,f78,f6,f8,f15,f16,f17,f18',
-            });
+            let stocks = [];
+            let dataSource = 'eastmoney';
+            
+            // 1. 尝试东方财富数据
+            try {
+                const params = new URLSearchParams({
+                    pn: '1', pz: '100', po: '1', np: '1',
+                    ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2', fid: 'f8',
+                    fs: 'm:0+t:6,m:1+t:2',
+                    fields: 'f12,f14,f2,f3,f62,f66,f84,f78,f6,f8,f15,f16,f17,f18',
+                });
 
-            const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
-            const response = await fetch(url);
-            const result = await response.json();
+                const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+                const response = await fetch(url);
+                const result = await response.json();
 
-            if (!result.data?.diff) throw new Error('数据为空');
+                if (result.data?.diff) {
+                    stocks = result.data.diff.filter(item => item.f12 && item.f14).map(item => {
+                        const price = parseFloat(item.f2 ?? 0);
+                        const turnoverRate = parseFloat(item.f8 ?? 0);
+                        const mainInflow = parseFloat(item.f62 ?? 0);
+                        const superInflow = parseFloat(item.f84 ?? 0);
+                        const volume = parseFloat(item.f6 ?? 0);
+                        const changePercent = parseFloat(item.f3 ?? 0);
+                        const prevClose = parseFloat(item.f18 ?? 0);
+                        const volumeRatio = turnoverRate > 0 ? (turnoverRate / 5).toFixed(2) : 0;
 
-            const stocks = result.data.diff.filter(item => item.f12 && item.f14).map(item => {
-                const price = parseFloat(item.f2 ?? 0);
-                const turnoverRate = parseFloat(item.f8 ?? 0);
-                const mainInflow = parseFloat(item.f62 ?? 0);
-                const superInflow = parseFloat(item.f84 ?? 0);
-                const volume = parseFloat(item.f6 ?? 0);
-                const changePercent = parseFloat(item.f3 ?? 0);
-                const prevClose = parseFloat(item.f18 ?? 0);
+                        let alertType = '';
+                        let alertLevel = 'normal';
 
-                // 计算量比（简化估算）
-                const volumeRatio = turnoverRate > 0 ? (turnoverRate / 5).toFixed(2) : 0; // 假设平均换手率5%
+                        if (turnoverRate > 10 && changePercent > 3 && mainInflow > 0) {
+                            alertType = '放量上涨'; alertLevel = 'high';
+                        } else if (turnoverRate > 10 && changePercent < -3) {
+                            alertType = '放量下跌'; alertLevel = 'high';
+                        } else if (mainInflow > 50000000) {
+                            alertType = '主力大买'; alertLevel = 'medium';
+                        } else if (mainInflow < -50000000) {
+                            alertType = '主力大卖'; alertLevel = 'medium';
+                        } else if (turnoverRate > 15) {
+                            alertType = '超高换手'; alertLevel = 'high';
+                        } else if (volumeRatio > 3) {
+                            alertType = '量比异常'; alertLevel = 'medium';
+                        }
 
-                // 判断异动类型
-                let alertType = '';
-                let alertLevel = 'normal';
-
-                // 放量上涨：换手率>10% 且 涨幅>3% 且 主力流入
-                if (turnoverRate > 10 && changePercent > 3 && mainInflow > 0) {
-                    alertType = '放量上涨';
-                    alertLevel = 'high';
+                        return {
+                            code: item.f12, name: item.f14, price, changePercent,
+                            mainInflow, superInflow, bigInflow: parseFloat(item.f78 ?? 0),
+                            volume, turnoverRate, volumeRatio,
+                            high: parseFloat(item.f15 ?? 0), low: parseFloat(item.f16 ?? 0),
+                            open: parseFloat(item.f17 ?? 0), prevClose,
+                            alertType, alertLevel,
+                            inflowRatio: parseFloat(item.f66 ?? 0),
+                            updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                            _source: 'eastmoney'
+                        };
+                    });
+                    recordSourceResult('eastmoney', true);
                 }
-                // 放量下跌：换手率>10% 且 跌幅>3%
-                else if (turnoverRate > 10 && changePercent < -3) {
-                    alertType = '放量下跌';
-                    alertLevel = 'high';
+            } catch (error) {
+                console.warn('[放量异动] 东方财富数据获取失败:', error.message);
+                recordSourceResult('eastmoney', false);
+            }
+            
+            // 2. 如果东方财富失败，尝试Tushare
+            if (stocks.length < 10 && TUSHARE_CONFIG.hasToken()) {
+                try {
+                    console.log('[放量异动] 尝试从Tushare获取数据...');
+                    const tushareData = await fetchTushareDaily();
+                    
+                    if (tushareData && tushareData.length > 0) {
+                        const tushareStocks = tushareData.filter(s => s.turnoverRate > 5).map(s => ({
+                            code: s.code, name: s.name || s.code, price: s.price,
+                            changePercent: s.changePercent, mainInflow: 0, volume: s.volume,
+                            turnoverRate: s.turnoverRate, volumeRatio: (s.turnoverRate / 5).toFixed(2),
+                            alertType: s.turnoverRate > 10 ? '高换手' : '',
+                            alertLevel: s.turnoverRate > 15 ? 'high' : 'medium',
+                            updateTime: s.updateTime, _source: 'tushare'
+                        }));
+                        stocks = [...stocks, ...tushareStocks];
+                        dataSource = 'mixed';
+                        updateDataSourceStatus('tushare', 'active');
+                    }
+                } catch (error) {
+                    console.warn('[放量异动] Tushare数据获取失败:', error.message);
                 }
-                // 主力大买：主力流入>5000万
-                else if (mainInflow > 50000000) {
-                    alertType = '主力大买';
-                    alertLevel = 'medium';
+            }
+            
+            // 3. 备用数据源：新浪财经
+            if (stocks.length < 5) {
+                console.log('[放量异动] 主数据源数据不足，尝试新浪财经...');
+                try {
+                    const hotCodes = ['600000', '600519', '000001', '000002', '600036', '601318', '600030', '000333', '002415', '601166'];
+                    const sinaData = await fetchSinaRealtimeData(hotCodes);
+                    if (sinaData.length > 0) {
+                        const sinaStocks = sinaData.map(s => ({
+                            code: s.code, name: s.name, price: s.price,
+                            changePercent: s.changePercent || 0, mainInflow: 0,
+                            volume: s.amount || 0, turnoverRate: 0,
+                            alertType: Math.abs(s.changePercent) > 3 ? '大幅波动' : '',
+                            alertLevel: Math.abs(s.changePercent) > 5 ? 'high' : 'medium',
+                            updateTime: s.updateTime, _source: 'sina'
+                        }));
+                        stocks = [...stocks, ...sinaStocks];
+                        dataSource = stocks.some(s => s._source === 'eastmoney') ? 'mixed' : 'sina';
+                        recordSourceResult('sina', true);
+                    }
+                } catch (error) {
+                    console.warn('[放量异动] 新浪数据获取失败:', error.message);
+                    recordSourceResult('sina', false);
                 }
-                // 主力大卖：主力流出>5000万
-                else if (mainInflow < -50000000) {
-                    alertType = '主力大卖';
-                    alertLevel = 'medium';
-                }
-                // 超高换手：换手率>15%
-                else if (turnoverRate > 15) {
-                    alertType = '超高换手';
-                    alertLevel = 'high';
-                }
-                // 量比异常
-                else if (volumeRatio > 3) {
-                    alertType = '量比异常';
-                    alertLevel = 'medium';
-                }
-
-                return {
-                    code: item.f12, name: item.f14, price, changePercent,
-                    mainInflow, superInflow, bigInflow: parseFloat(item.f78 ?? 0),
-                    volume, turnoverRate, volumeRatio,
-                    high: parseFloat(item.f15 ?? 0), low: parseFloat(item.f16 ?? 0),
-                    open: parseFloat(item.f17 ?? 0), prevClose,
-                    alertType, alertLevel,
-                    inflowRatio: parseFloat(item.f66 ?? 0),
-                    updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-                };
-            });
+            }
 
             // 只返回有异动的股票，按异动等级排序
             return stocks.filter(s => s.alertType !== '')
@@ -2024,54 +2120,110 @@
                 });
         }
 
-        // 获取尾盘资金流入数据
+        // 获取尾盘资金流入数据（混合数据源）
         // 尾盘时段: 14:30-15:00
         async function fetchLateTradingData() {
-            const params = new URLSearchParams({
-                pn: '1', pz: '50', po: '1', np: '1',
-                ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2', fid: 'f62',
-                fs: 'm:0+t:6,m:1+t:2',
-                fields: 'f12,f14,f2,f3,f62,f66,f69,f72,f78,f84,f85,f92,f6,f8,f15,f16',
-            });
+            let stocks = [];
+            let dataSource = 'eastmoney';
+            
+            // 1. 尝试Tushare数据（如果已配置Token）
+            if (TUSHARE_CONFIG.hasToken()) {
+                try {
+                    console.log('[尾盘资金] 尝试从Tushare获取资金流向数据...');
+                    const tushareData = await fetchTushareMoneyFlow();
+                    
+                    if (tushareData && tushareData.length > 0) {
+                        console.log(`[尾盘资金] Tushare获取到 ${tushareData.length} 条数据`);
+                        stocks = tushareData;
+                        dataSource = 'tushare';
+                        updateDataSourceStatus('tushare', 'active');
+                    }
+                } catch (error) {
+                    console.warn('[尾盘资金] Tushare数据获取失败:', error.message);
+                }
+            }
+            
+            // 2. 尝试东方财富数据
+            if (stocks.length < 10) {
+                try {
+                    const params = new URLSearchParams({
+                        pn: '1', pz: '50', po: '1', np: '1',
+                        ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2', fid: 'f62',
+                        fs: 'm:0+t:6,m:1+t:2',
+                        fields: 'f12,f14,f2,f3,f62,f66,f69,f72,f78,f84,f85,f92,f6,f8,f15,f16',
+                    });
 
-            const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
-            const response = await fetch(url);
-            const result = await response.json();
+                    const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+                    const response = await fetch(url);
+                    const result = await response.json();
 
-            if (!result.data?.diff) throw new Error('数据为空');
-
-            return result.data.diff.filter(item => item.f12 && item.f14).map(item => {
-                const mainInflow = parseFloat(item.f62 ?? 0);      // 主力净流入（元）
-                const volume = parseFloat(item.f6 ?? 0);           // 成交额（元）
-                const mediumPercent = parseFloat(item.f85 ?? 0);   // 中单净占比（%）
-                const smallPercent = parseFloat(item.f92 ?? 0);    // 小单净占比（%）
-                
-                // 散户资金 = 成交额 * (中单占比 + 小单占比) / 100
-                // 注意：f85和f92可能是占比百分比，不是金额
-                const retailInflow = volume * (mediumPercent + smallPercent) / 100;
-                // 暗盘资金 = 模拟为大宗交易数据（基于主力资金的一定比例）
-                const darkPoolInflow = mainInflow * (0.1 + Math.random() * 0.15);
-                
-                return {
-                    code: item.f12,
-                    name: item.f14,
-                    price: parseFloat(item.f2 ?? 0),
-                    changePercent: parseFloat(item.f3 ?? 0),
-                    mainInflow: mainInflow,
-                    retailInflow: retailInflow,
-                    darkPoolInflow: darkPoolInflow,
-                    inflowRatio: parseFloat(item.f66 ?? 0),
-                    superInflow: parseFloat(item.f84 ?? 0),
-                    bigInflow: parseFloat(item.f78 ?? 0),
-                    mediumInflow: mediumPercent,  // 保留原始值（可能是占比）
-                    smallInflow: smallPercent,    // 保留原始值（可能是占比）
-                    volume: volume,
-                    turnoverRate: parseFloat(item.f8 ?? 0),
-                    high: parseFloat(item.f15 ?? 0),
-                    low: parseFloat(item.f16 ?? 0),
-                    updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-                };
-            }).sort((a, b) => b.mainInflow - a.mainInflow);
+                    if (result.data?.diff) {
+                        const eastmoneyStocks = result.data.diff.filter(item => item.f12 && item.f14).map(item => {
+                            const mainInflow = parseFloat(item.f62 ?? 0);
+                            const volume = parseFloat(item.f6 ?? 0);
+                            const mediumPercent = parseFloat(item.f85 ?? 0);
+                            const smallPercent = parseFloat(item.f92 ?? 0);
+                            const retailInflow = volume * (mediumPercent + smallPercent) / 100;
+                            const darkPoolInflow = mainInflow * (0.1 + Math.random() * 0.15);
+                            
+                            return {
+                                code: item.f12, name: item.f14, price: parseFloat(item.f2 ?? 0),
+                                changePercent: parseFloat(item.f3 ?? 0), mainInflow: mainInflow,
+                                retailInflow: retailInflow, darkPoolInflow: darkPoolInflow,
+                                inflowRatio: parseFloat(item.f66 ?? 0), superInflow: parseFloat(item.f84 ?? 0),
+                                bigInflow: parseFloat(item.f78 ?? 0), mediumInflow: mediumPercent,
+                                smallInflow: smallPercent, volume: volume,
+                                turnoverRate: parseFloat(item.f8 ?? 0), high: parseFloat(item.f15 ?? 0),
+                                low: parseFloat(item.f16 ?? 0),
+                                updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                                _source: 'eastmoney'
+                            };
+                        }).sort((a, b) => b.mainInflow - a.mainInflow);
+                        
+                        if (stocks.length > 0) {
+                            stocks = mergeStockData(stocks, eastmoneyStocks);
+                            dataSource = 'mixed';
+                        } else {
+                            stocks = eastmoneyStocks;
+                            dataSource = 'eastmoney';
+                        }
+                        recordSourceResult('eastmoney', true);
+                    }
+                } catch (error) {
+                    console.warn('[尾盘资金] 东方财富数据获取失败:', error.message);
+                    recordSourceResult('eastmoney', false);
+                }
+            }
+            
+            // 3. 备用数据源：腾讯财经
+            if (stocks.length < 5) {
+                console.log('[尾盘资金] 主数据源数据不足，尝试腾讯财经...');
+                try {
+                    const hotCodes = ['600000', '600519', '000001', '000002', '600036', '601318', '600030', '000333', '002415', '601166'];
+                    const tencentData = await fetchTencentRealtimeData(hotCodes);
+                    if (tencentData.length > 0) {
+                        const tencentStocks = tencentData.map(s => ({
+                            code: s.code, name: s.name, price: s.price,
+                            changePercent: s.changePercent || 0, mainInflow: 0,
+                            volume: s.amount * 10000 || 0, updateTime: s.updateTime,
+                            _source: 'tencent'
+                        }));
+                        stocks = [...stocks, ...tencentStocks];
+                        dataSource = stocks.some(s => s._source === 'eastmoney') ? 'mixed' : 'tencent';
+                        recordSourceResult('tencent', true);
+                    }
+                } catch (error) {
+                    console.warn('[尾盘资金] 腾讯数据获取失败:', error.message);
+                    recordSourceResult('tencent', false);
+                }
+            }
+            
+            // 更新数据源状态
+            if (dataSource !== 'eastmoney') {
+                updateDataSourceStatus(dataSource, 'active');
+            }
+            
+            return stocks;
         }
 
         // 更新统计信息
@@ -2490,121 +2642,161 @@
             return { total: score, details };
         }
 
-        // 智能选股主函数
+        // 智能选股主函数（混合数据源）
         async function fetchSmartPickData() {
             console.log('开始智能选股...');
+            let dataSource = 'eastmoney';
             
-            // 1. 获取主力资金流入数据
-            const mainFlowParams = new URLSearchParams({
-                pn: '1', pz: '100', po: '1', np: '1',
-                ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2', fid: 'f62',
-                fs: 'm:0+t:6,m:1+t:2',
-                fields: 'f12,f14,f2,f3,f62,f66,f6,f8,f15,f16,f17,f18,f84,f78,f85,f92',
-            });
-
-            const mainFlowUrl = `https://push2.eastmoney.com/api/qt/clist/get?${mainFlowParams}`;
-            const mainFlowResponse = await fetch(mainFlowUrl);
-            const mainFlowResult = await mainFlowResponse.json();
-
-            if (!mainFlowResult.data?.diff) {
-                throw new Error('主力资金数据为空');
+            // 1. 尝试Tushare获取主力资金数据
+            let tushareStocks = [];
+            if (TUSHARE_CONFIG.hasToken()) {
+                try {
+                    console.log('[智能选股] 尝试从Tushare获取资金流向数据...');
+                    tushareStocks = await fetchTushareMoneyFlow();
+                    if (tushareStocks && tushareStocks.length > 0) {
+                        console.log(`[智能选股] Tushare获取到 ${tushareStocks.length} 条数据`);
+                        updateDataSourceStatus('tushare', 'active');
+                    }
+                } catch (error) {
+                    console.warn('[智能选股] Tushare数据获取失败:', error.message);
+                }
             }
-
-            // 2. 获取尾盘资金数据
-            const lateFlowParams = new URLSearchParams({
-                pn: '1', pz: '100', po: '1', np: '1',
-                ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2', fid: 'f62',
-                fs: 'm:0+t:6,m:1+t:2',
-                fields: 'f12,f14,f2,f3,f62,f6,f8',
-            });
-
-            const lateFlowUrl = `https://push2.eastmoney.com/api/qt/clist/get?${lateFlowParams}`;
-            const lateFlowResponse = await fetch(lateFlowUrl);
-            const lateFlowResult = await lateFlowResponse.json();
-
-            // 建立尾盘数据映射
-            const lateFlowMap = {};
-            if (lateFlowResult.data?.diff) {
-                lateFlowResult.data.diff.forEach(item => {
-                    lateFlowMap[item.f12] = parseFloat(item.f62 ?? 0);
+            
+            // 2. 获取东方财富主力资金流入数据
+            let eastmoneyStocks = [];
+            try {
+                const mainFlowParams = new URLSearchParams({
+                    pn: '1', pz: '100', po: '1', np: '1',
+                    ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2', fid: 'f62',
+                    fs: 'm:0+t:6,m:1+t:2',
+                    fields: 'f12,f14,f2,f3,f62,f66,f6,f8,f15,f16,f17,f18,f84,f78,f85,f92',
                 });
+
+                const mainFlowUrl = `https://push2.eastmoney.com/api/qt/clist/get?${mainFlowParams}`;
+                const mainFlowResponse = await fetch(mainFlowUrl);
+                const mainFlowResult = await mainFlowResponse.json();
+
+                if (mainFlowResult.data?.diff) {
+                    eastmoneyStocks = mainFlowResult.data.diff;
+                    recordSourceResult('eastmoney', true);
+                }
+            } catch (error) {
+                console.warn('[智能选股] 东方财富数据获取失败:', error.message);
+                recordSourceResult('eastmoney', false);
             }
 
-            // 3. 处理和筛选股票
-            let candidates = mainFlowResult.data.diff
-                .filter(item => {
-                    if (!item.f12 || !item.f14) return false;
-                    
-                    const code = item.f12;
-                    const changePercent = parseFloat(item.f3 ?? 0);
-                    const mainInflow = parseFloat(item.f62 ?? 0);
-                    const turnoverRate = parseFloat(item.f8 ?? 0);
-                    const volume = parseFloat(item.f6 ?? 0);
+            // 如果两个数据源都没有数据
+            if (tushareStocks.length === 0 && eastmoneyStocks.length === 0) {
+                throw new Error('所有数据源均无法获取数据');
+            }
 
-                    // 过滤条件
-                    // 排除科创板(688)和创业板(300/301)
-                    if (code.startsWith('688') || code.startsWith('300') || code.startsWith('301')) {
-                        return false;
-                    }
-                    // 排除ST股票
-                    if ((item.f14 || '').includes('ST')) {
-                        return false;
-                    }
-                    // 涨幅过滤：排除涨停和下跌股票
-                    if (changePercent < SMART_PICK_CONFIG.minChangePercent || 
-                        changePercent >= SMART_PICK_CONFIG.maxChangePercent) {
-                        return false;
-                    }
-                    // 主力资金过滤：必须为正流入
-                    if (mainInflow < SMART_PICK_CONFIG.minMainInflow) {
-                        return false;
-                    }
-                    // 换手率过滤
-                    if (turnoverRate < SMART_PICK_CONFIG.minTurnoverRate || 
-                        turnoverRate > SMART_PICK_CONFIG.maxTurnoverRate) {
-                        return false;
-                    }
-                    // 成交额过滤
-                    if (volume < SMART_PICK_CONFIG.minVolume) {
-                        return false;
-                    }
+            // 3. 获取尾盘资金数据（用于补充评分）
+            const lateFlowMap = {};
+            try {
+                const lateFlowParams = new URLSearchParams({
+                    pn: '1', pz: '100', po: '1', np: '1',
+                    ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2', fid: 'f62',
+                    fs: 'm:0+t:6,m:1+t:2',
+                    fields: 'f12,f14,f2,f3,f62,f6,f8',
+                });
 
-                    return true;
-                })
-                .map(item => {
-                    const stock = {
-                        code: item.f12,
-                        name: item.f14,
-                        price: parseFloat(item.f2 ?? 0),
-                        changePercent: parseFloat(item.f3 ?? 0),
-                        mainInflow: parseFloat(item.f62 ?? 0),
-                        inflowRatio: parseFloat(item.f66 ?? 0),
-                        volume: parseFloat(item.f6 ?? 0),
-                        turnoverRate: parseFloat(item.f8 ?? 0),
-                        high: parseFloat(item.f15 ?? 0),
-                        low: parseFloat(item.f16 ?? 0),
-                        open: parseFloat(item.f17 ?? 0),
-                        prevClose: parseFloat(item.f18 ?? 0),
-                        lateInflow: lateFlowMap[item.f12] || 0,
-                        superInflow: parseFloat(item.f84 ?? 0),
-                        bigInflow: parseFloat(item.f78 ?? 0),
-                    };
+                const lateFlowUrl = `https://push2.eastmoney.com/api/qt/clist/get?${lateFlowParams}`;
+                const lateFlowResponse = await fetch(lateFlowUrl);
+                const lateFlowResult = await lateFlowResponse.json();
 
-                    // 计算评分
-                    const scoreResult = calculateStockScore(stock);
-                    stock.score = scoreResult.total;
-                    stock.scoreDetails = scoreResult.details;
+                if (lateFlowResult.data?.diff) {
+                    lateFlowResult.data.diff.forEach(item => {
+                        lateFlowMap[item.f12] = parseFloat(item.f62 ?? 0);
+                    });
+                }
+            } catch (error) {
+                console.warn('[智能选股] 尾盘数据获取失败:', error.message);
+            }
 
-                    return stock;
-                })
-                .sort((a, b) => b.score - a.score) // 按评分降序
-                .slice(0, SMART_PICK_CONFIG.maxStocks); // 取前10只
+            // 4. 合并数据源并筛选股票
+            let candidates = [];
+            
+            // 处理东方财富数据
+            if (eastmoneyStocks.length > 0) {
+                candidates = eastmoneyStocks
+                    .filter(item => {
+                        if (!item.f12 || !item.f14) return false;
+                        const code = item.f12;
+                        const changePercent = parseFloat(item.f3 ?? 0);
+                        const mainInflow = parseFloat(item.f62 ?? 0);
+                        const turnoverRate = parseFloat(item.f8 ?? 0);
+                        const volume = parseFloat(item.f6 ?? 0);
+
+                        if (code.startsWith('688') || code.startsWith('300') || code.startsWith('301')) return false;
+                        if ((item.f14 || '').includes('ST')) return false;
+                        if (changePercent < SMART_PICK_CONFIG.minChangePercent || 
+                            changePercent >= SMART_PICK_CONFIG.maxChangePercent) return false;
+                        if (mainInflow < SMART_PICK_CONFIG.minMainInflow) return false;
+                        if (turnoverRate < SMART_PICK_CONFIG.minTurnoverRate || 
+                            turnoverRate > SMART_PICK_CONFIG.maxTurnoverRate) return false;
+                        if (volume < SMART_PICK_CONFIG.minVolume) return false;
+                        return true;
+                    })
+                    .map(item => {
+                        const stock = {
+                            code: item.f12, name: item.f14,
+                            price: parseFloat(item.f2 ?? 0),
+                            changePercent: parseFloat(item.f3 ?? 0),
+                            mainInflow: parseFloat(item.f62 ?? 0),
+                            inflowRatio: parseFloat(item.f66 ?? 0),
+                            volume: parseFloat(item.f6 ?? 0),
+                            turnoverRate: parseFloat(item.f8 ?? 0),
+                            high: parseFloat(item.f15 ?? 0),
+                            low: parseFloat(item.f16 ?? 0),
+                            open: parseFloat(item.f17 ?? 0),
+                            prevClose: parseFloat(item.f18 ?? 0),
+                            lateInflow: lateFlowMap[item.f12] || 0,
+                            superInflow: parseFloat(item.f84 ?? 0),
+                            bigInflow: parseFloat(item.f78 ?? 0),
+                            _source: 'eastmoney'
+                        };
+                        const scoreResult = calculateStockScore(stock);
+                        stock.score = scoreResult.total;
+                        stock.scoreDetails = scoreResult.details;
+                        return stock;
+                    });
+            }
+            
+            // 补充Tushare数据
+            if (tushareStocks.length > 0) {
+                tushareStocks.forEach(ts => {
+                    if (!candidates.find(c => c.code === ts.code)) {
+                        if (ts.mainInflow >= SMART_PICK_CONFIG.minMainInflow) {
+                            const stock = {
+                                code: ts.code, name: ts.name || ts.code,
+                                price: ts.price || 0, changePercent: ts.changePercent || 0,
+                                mainInflow: ts.mainInflow, volume: ts.volume,
+                                turnoverRate: ts.turnoverRate || 0,
+                                lateInflow: 0, superInflow: ts.superInflow || 0,
+                                bigInflow: ts.bigInflow || 0, _source: 'tushare'
+                            };
+                            const scoreResult = calculateStockScore(stock);
+                            stock.score = scoreResult.total;
+                            stock.scoreDetails = scoreResult.details;
+                            candidates.push(stock);
+                        }
+                    }
+                });
+                if (tushareStocks.length > 0) {
+                    dataSource = 'mixed';
+                }
+            }
+
+            // 排序并取前10只
+            candidates = candidates
+                .sort((a, b) => b.score - a.score)
+                .slice(0, SMART_PICK_CONFIG.maxStocks);
 
             // 更新缓存
             smartPickCache.stocks = candidates;
             smartPickCache.lastUpdate = new Date();
 
-            console.log(`智能选股完成，共筛选出 ${candidates.length} 只股票`);
+            console.log(`智能选股完成，共筛选出 ${candidates.length} 只股票，数据源: ${dataSource}`);
             return candidates;
         }
 
