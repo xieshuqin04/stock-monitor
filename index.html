@@ -113,8 +113,38 @@
         <p class="text-xs text-amber-700">⭐ 添加自选股实时监控，检测异常动作（大额资金进出、快速拉升/下跌、放量异动等）及时提醒</p>
     </div>
 
-    <!-- 数据统计栏 -->
-    <div id="statsBar" class="bg-white px-4 py-3 border-b border-gray-200 hidden">
+    <!-- 竞价资金统计栏 -->
+    <div id="auctionStatsBar" class="hidden bg-white px-4 py-2 border-b border-gray-200">
+        <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+                <button id="auctionMonitorBtn" onclick="toggleTabMonitor('auction')" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg font-medium">▶ 开启</button>
+                <span class="text-xs text-gray-400" id="auctionUpdateTime">--</span>
+            </div>
+        </div>
+        <div class="flex justify-around text-center">
+            <div>
+                <p class="text-xs text-gray-500">主力净流入</p>
+                <p id="auctionTotalInflow" class="text-lg font-bold rise">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">流入股票数</p>
+                <p id="auctionInflowCount" class="text-lg font-bold text-red-500">--</p>
+            </div>
+            <div>
+                <p class="text-xs text-gray-500">流出股票数</p>
+                <p id="auctionOutflowCount" class="text-lg font-bold text-green-500">--</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 数据统计栏 - 主力资金 -->
+    <div id="statsBar" class="bg-white px-4 py-2 border-b border-gray-200 hidden">
+        <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+                <button id="realtimeMonitorBtn" onclick="toggleTabMonitor('realtime')" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg font-medium">▶ 开启</button>
+                <span class="text-xs text-gray-400" id="realtimeUpdateTime">--</span>
+            </div>
+        </div>
         <div class="flex justify-around text-center">
             <div>
                 <p class="text-xs text-gray-500">主力净流入</p>
@@ -132,7 +162,13 @@
     </div>
 
     <!-- 隔夜挂单统计栏 -->
-    <div id="overnightStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+    <div id="overnightStatsBar" class="hidden bg-white px-4 py-2 border-b border-gray-200">
+        <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+                <button id="overnightMonitorBtn" onclick="toggleTabMonitor('overnight')" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg font-medium">▶ 开启</button>
+                <span class="text-xs text-gray-400" id="overnightUpdateTime">--</span>
+            </div>
+        </div>
         <div class="flex justify-around text-center">
             <div>
                 <p class="text-xs text-gray-500">总流入</p>
@@ -150,7 +186,13 @@
     </div>
 
     <!-- 量化机构统计栏 -->
-    <div id="institutionStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+    <div id="institutionStatsBar" class="hidden bg-white px-4 py-2 border-b border-gray-200">
+        <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+                <button id="institutionMonitorBtn" onclick="toggleTabMonitor('institution')" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg font-medium">▶ 开启</button>
+                <span class="text-xs text-gray-400" id="institutionUpdateTime">--</span>
+            </div>
+        </div>
         <div class="flex justify-around text-center">
             <div>
                 <p class="text-xs text-gray-500">机构买入</p>
@@ -168,7 +210,13 @@
     </div>
 
     <!-- 放量异动统计栏 -->
-    <div id="alertStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+    <div id="alertStatsBar" class="hidden bg-white px-4 py-2 border-b border-gray-200">
+        <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+                <button id="alertMonitorBtn" onclick="toggleTabMonitor('alert')" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg font-medium">▶ 开启</button>
+                <span class="text-xs text-gray-400" id="alertUpdateTime">--</span>
+            </div>
+        </div>
         <div class="flex justify-around text-center">
             <div>
                 <p class="text-xs text-gray-500">放量上涨</p>
@@ -186,7 +234,13 @@
     </div>
 
     <!-- 尾盘资金统计栏 -->
-    <div id="lateTradingStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+    <div id="lateTradingStatsBar" class="hidden bg-white px-4 py-2 border-b border-gray-200">
+        <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+                <button id="lateTradingMonitorBtn" onclick="toggleTabMonitor('lateTrading')" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg font-medium">▶ 开启</button>
+                <span class="text-xs text-gray-400" id="lateTradingUpdateTime">--</span>
+            </div>
+        </div>
         <div class="flex justify-around text-center">
             <div>
                 <p class="text-xs text-gray-500">尾盘净流入</p>
@@ -204,7 +258,13 @@
     </div>
 
     <!-- 自选股统计栏 -->
-    <div id="watchlistStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+    <div id="watchlistStatsBar" class="hidden bg-white px-4 py-2 border-b border-gray-200">
+        <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+                <button id="watchlistMonitorBtn" onclick="toggleTabMonitor('watchlist')" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg font-medium">▶ 开启</button>
+                <span class="text-xs text-gray-400" id="watchlistUpdateTime">--</span>
+            </div>
+        </div>
         <div class="flex justify-around text-center">
             <div>
                 <p class="text-xs text-gray-500">监控股票</p>
@@ -240,7 +300,13 @@
     </div>
 
     <!-- 高开统计栏 -->
-    <div id="highOpenStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+    <div id="highOpenStatsBar" class="hidden bg-white px-4 py-2 border-b border-gray-200">
+        <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+                <button id="highOpenMonitorBtn" onclick="toggleTabMonitor('highOpen')" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg font-medium">▶ 开启</button>
+                <span class="text-xs text-gray-400" id="highOpenUpdateTime">--</span>
+            </div>
+        </div>
         <div class="flex justify-around text-center">
             <div>
                 <p class="text-xs text-gray-500">高开股票数</p>
@@ -267,7 +333,13 @@
     </div>
 
     <!-- 热点题材统计栏 -->
-    <div id="hotConceptStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
+    <div id="hotConceptStatsBar" class="hidden bg-white px-4 py-2 border-b border-gray-200">
+        <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+                <button id="hotConceptMonitorBtn" onclick="toggleTabMonitor('hotConcept')" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg font-medium">▶ 开启</button>
+                <span class="text-xs text-gray-400" id="hotConceptUpdateTime">--</span>
+            </div>
+        </div>
         <div class="flex justify-around text-center">
             <div>
                 <p class="text-xs text-gray-500">热点题材数</p>
@@ -294,15 +366,13 @@
     </div>
 
     <!-- 美股映射统计栏 -->
-    <div id="usStockStatsBar" class="hidden bg-white px-4 py-3 border-b border-gray-200">
-        <!-- 刷新控制栏 -->
-        <div class="flex items-center justify-end mb-3 pb-3 border-b border-gray-100">
-            <button id="usStockRefreshBtn" onclick="manualRefreshUsStock()" class="flex items-center gap-1 px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 active:scale-95 transition-all">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                </svg>
-                <span>刷新数据</span>
-            </button>
+    <div id="usStockStatsBar" class="hidden bg-white px-4 py-2 border-b border-gray-200">
+        <!-- 监控控制栏 -->
+        <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+                <button id="usStockMonitorBtn" onclick="toggleTabMonitor('usStock')" class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg font-medium">▶ 开启</button>
+                <span class="text-xs text-gray-400" id="usStockUpdateTime">--</span>
+            </div>
         </div>
         <!-- 美股统计 -->
         <div class="flex justify-around text-center mb-3 pb-3 border-b border-gray-100">
@@ -351,7 +421,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
             </svg>
             <p class="text-gray-400 text-lg mb-2">暂无数据</p>
-            <p class="text-gray-400 text-sm text-center">点击"开始监控"按钮<br/>获取主力资金数据</p>
+            <p class="text-gray-400 text-sm text-center">点击上方 <b>▶ 开启</b> 按钮<br/>开始监控主力资金数据</p>
         </div>
     </div>
 
@@ -411,11 +481,19 @@
     </div>
 
     <script>
-        // 监控状态
-        let isAuctionMonitoring = false;  // 集合竞价监控状态
-        let isTradingMonitoring = false;  // 开盘时间监控状态
-        let auctionInterval = null;       // 集合竞价定时器
-        let tradingInterval = null;       // 开盘时间定时器
+        // 每个Tab独立的监控状态
+        const tabMonitorState = {
+            auction: { isMonitoring: false, interval: null, refreshTime: 5000 },
+            highOpen: { isMonitoring: false, interval: null, refreshTime: 5000 },
+            hotConcept: { isMonitoring: false, interval: null, refreshTime: 5000 },
+            usStock: { isMonitoring: false, interval: null, refreshTime: 10000 },
+            realtime: { isMonitoring: false, interval: null, refreshTime: 3000 },
+            overnight: { isMonitoring: false, interval: null, refreshTime: 3000 },
+            institution: { isMonitoring: false, interval: null, refreshTime: 3000 },
+            alert: { isMonitoring: false, interval: null, refreshTime: 3000 },
+            lateTrading: { isMonitoring: false, interval: null, refreshTime: 3000 },
+            watchlist: { isMonitoring: false, interval: null, refreshTime: 3000 }
+        };
         let currentTab = 'auction';
         let allStocksCache = []; // 缓存所有股票数据用于搜索
 
@@ -478,37 +556,6 @@
         function isWorkday() {
             const day = new Date().getDay();
             return day >= 1 && day <= 5;
-        }
-
-        // 自动监控检测（每秒检查一次）
-        let autoCheckInterval = null;
-
-        function startAutoMonitor() {
-            if (autoCheckInterval) return; // 避免重复启动
-            
-            autoCheckInterval = setInterval(() => {
-                if (!isWorkday()) {
-                    // 周末不自动监控
-                    return;
-                }
-                
-                const shouldAuctionMonitor = isCallAuctionTime();
-                const shouldTradingMonitor = isTradingTime();
-                
-                // 自动开启/关闭集合竞价监控
-                if (shouldAuctionMonitor && !isAuctionMonitoring) {
-                    startAuctionMonitor();
-                } else if (!shouldAuctionMonitor && isAuctionMonitoring) {
-                    stopAuctionMonitor();
-                }
-                
-                // 自动开启/关闭开盘监控
-                if (shouldTradingMonitor && !isTradingMonitoring) {
-                    startTradingMonitor();
-                } else if (!shouldTradingMonitor && isTradingMonitoring) {
-                    stopTradingMonitor();
-                }
-            }, 1000);
         }
 
         // 获取当前时段状态
@@ -585,7 +632,7 @@
             });
 
             // 隐藏所有统计栏和提示
-            ['statsBar', 'overnightStatsBar', 'institutionStatsBar', 'alertStatsBar', 'lateTradingStatsBar', 'watchlistStatsBar', 'watchlistAddArea', 'highOpenStatsBar', 'hotConceptStatsBar', 'usStockStatsBar'].forEach(id => {
+            ['auctionStatsBar', 'statsBar', 'overnightStatsBar', 'institutionStatsBar', 'alertStatsBar', 'lateTradingStatsBar', 'watchlistStatsBar', 'watchlistAddArea', 'highOpenStatsBar', 'hotConceptStatsBar', 'usStockStatsBar'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.classList.add('hidden');
             });
@@ -595,7 +642,10 @@
             });
 
             // 显示对应的统计栏和提示
-            if (tab === 'highOpen') {
+            if (tab === 'auction') {
+                const statsBar = document.getElementById('auctionStatsBar');
+                if (statsBar) statsBar.classList.remove('hidden');
+            } else if (tab === 'highOpen') {
                 const statsBar = document.getElementById('highOpenStatsBar');
                 if (statsBar) statsBar.classList.remove('hidden');
                 document.getElementById('highOpenTip').classList.remove('hidden');
@@ -639,7 +689,8 @@
                 </div>
             `;
 
-            if (isMonitoring) {
+            // 如果当前Tab正在监控，则获取数据
+            if (tabMonitorState[tab] && tabMonitorState[tab].isMonitoring) {
                 fetchStockData();
             }
         }
@@ -674,7 +725,7 @@
                 if (currentTab === 'auction') {
                     stocks = filterOutGEM(await fetchCallAuctionData());
                     renderStockList(stocks);
-                    updateStats(stocks);
+                    updateAuctionStats(stocks);
                 } else if (currentTab === 'highOpen') {
                     stocks = filterOutGEM(await fetchHighOpenData());
                     renderHighOpenList(stocks);
@@ -1327,7 +1378,9 @@
 
         // 更新统计信息
         function updateStats(stocks) {
-            document.getElementById('statsBar').classList.remove('hidden');
+            const statsBar = document.getElementById('statsBar');
+            if (statsBar) statsBar.classList.remove('hidden');
+            
             const totalInflow = stocks.reduce((sum, s) => sum + s.mainInflow, 0);
             const inflowCount = stocks.filter(s => s.mainInflow > 0).length;
             const outflowCount = stocks.filter(s => s.mainInflow < 0).length;
@@ -1338,6 +1391,28 @@
 
             document.getElementById('inflowCount').textContent = inflowCount;
             document.getElementById('outflowCount').textContent = outflowCount;
+        }
+
+        // 更新竞价资金统计
+        function updateAuctionStats(stocks) {
+            const statsBar = document.getElementById('auctionStatsBar');
+            if (!statsBar) return;
+            
+            const totalInflow = stocks.reduce((sum, s) => sum + s.mainInflow, 0);
+            const inflowCount = stocks.filter(s => s.mainInflow > 0).length;
+            const outflowCount = stocks.filter(s => s.mainInflow < 0).length;
+
+            const totalEl = document.getElementById('auctionTotalInflow');
+            if (totalEl) {
+                totalEl.textContent = (totalInflow >= 0 ? '+' : '') + formatAmount(totalInflow);
+                totalEl.className = `text-lg font-bold ${totalInflow >= 0 ? 'rise' : 'fall'}`;
+            }
+
+            const inflowEl = document.getElementById('auctionInflowCount');
+            if (inflowEl) inflowEl.textContent = inflowCount;
+            
+            const outflowEl = document.getElementById('auctionOutflowCount');
+            if (outflowEl) outflowEl.textContent = outflowCount;
         }
 
         // 更新隔夜挂单统计
@@ -2788,48 +2863,54 @@
 
         // 兼容旧函数 - 已移除手动监控开关
         
-        // 自动监控核心函数
-        function startAuctionMonitor() {
-            if (isAuctionMonitoring) return;
-            isAuctionMonitoring = true;
-            console.log('自动开启集合竞价监控');
-            fetchStockData();
-            auctionInterval = setInterval(() => {
-                if (currentTab === 'auction' || currentTab === 'highOpen' || currentTab === 'hotConcept') {
-                    fetchStockData();
+        // 切换单个Tab的监控状态
+        function toggleTabMonitor(tabName) {
+            const state = tabMonitorState[tabName];
+            const btn = document.getElementById(`${tabName}MonitorBtn`);
+            const updateTimeEl = document.getElementById(`${tabName}UpdateTime`);
+            
+            if (!state || !btn) return;
+            
+            if (state.isMonitoring) {
+                // 关闭监控
+                state.isMonitoring = false;
+                btn.textContent = '▶ 开启';
+                btn.classList.remove('bg-red-500');
+                btn.classList.add('bg-blue-500');
+                if (state.interval) {
+                    clearInterval(state.interval);
+                    state.interval = null;
                 }
-            }, 5000);
-        }
-        
-        function stopAuctionMonitor() {
-            if (!isAuctionMonitoring) return;
-            isAuctionMonitoring = false;
-            console.log('自动关闭集合竞价监控');
-            if (auctionInterval) {
-                clearInterval(auctionInterval);
-                auctionInterval = null;
-            }
-        }
-        
-        function startTradingMonitor() {
-            if (isTradingMonitoring) return;
-            isTradingMonitoring = true;
-            console.log('自动开启开盘监控');
-            fetchStockData();
-            tradingInterval = setInterval(() => {
-                if (['realtime', 'overnight', 'institution', 'alert', 'watchlist', 'lateTrading'].includes(currentTab)) {
-                    fetchStockData();
+                console.log(`关闭 ${tabName} 监控`);
+            } else {
+                // 开启监控
+                state.isMonitoring = true;
+                btn.textContent = '⏹ 停止';
+                btn.classList.remove('bg-blue-500');
+                btn.classList.add('bg-red-500');
+                
+                // 如果不在当前Tab，切换过去
+                if (currentTab !== tabName) {
+                    switchTab(tabName);
                 }
-            }, 3000);
-        }
-        
-        function stopTradingMonitor() {
-            if (!isTradingMonitoring) return;
-            isTradingMonitoring = false;
-            console.log('自动关闭开盘监控');
-            if (tradingInterval) {
-                clearInterval(tradingInterval);
-                tradingInterval = null;
+                
+                // 立即获取一次数据
+                fetchStockData();
+                
+                // 更新时间
+                if (updateTimeEl) {
+                    updateTimeEl.textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                }
+                
+                // 设置定时刷新
+                state.interval = setInterval(() => {
+                    fetchStockData();
+                    if (updateTimeEl) {
+                        updateTimeEl.textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                    }
+                }, state.refreshTime);
+                
+                console.log(`开启 ${tabName} 监控，刷新间隔 ${state.refreshTime}ms`);
             }
         }
 
@@ -2844,7 +2925,6 @@
         // 初始化
         updateStatus();
         setInterval(updateStatus, 1000);
-        startAutoMonitor(); // 启动自动监控检测
         preloadAllAStocks(); // 预加载全部A股数据用于搜索
     </script>
 </body>
