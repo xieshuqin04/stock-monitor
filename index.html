@@ -634,7 +634,7 @@
             tushare: {
                 name: 'Tushare',
                 priority: 2,
-                status: 'inactive',  // 需要配置token
+                status: 'active',  // 已预配置Token
                 lastError: null,
                 requiresToken: true
             },
@@ -655,7 +655,9 @@
         // Tushare配置
         const TUSHARE_CONFIG = {
             apiUrl: 'https://api.tushare.pro',
-            getToken: () => localStorage.getItem('tushare_token'),
+            // 预配置的Token
+            defaultToken: 'e54304257545987546deeb6a1e349766c05dee283948eacf48109f62',
+            getToken: () => localStorage.getItem('tushare_token') || 'e54304257545987546deeb6a1e349766c05dee283948eacf48109f62',
             setToken: (token) => {
                 if (token) {
                     localStorage.setItem('tushare_token', token);
@@ -666,7 +668,7 @@
                     DATA_SOURCES.tushare.status = 'inactive';
                 }
             },
-            hasToken: () => !!localStorage.getItem('tushare_token')
+            hasToken: () => true  // 已预配置Token
         };
 
         // 数据源状态追踪
