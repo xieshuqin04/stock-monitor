@@ -265,6 +265,7 @@
         <div class="flex items-center gap-2">
             <input id="watchlistInput" type="text" placeholder="输入股票代码或名称（如：600519 或 茅台）"
                 class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                oninput="debounceSearchWatchlist(this.value)"
                 onkeypress="if(event.key==='Enter')addToWatchlist()">
             <button onclick="addToWatchlist()" class="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600">
                 添加
@@ -1635,9 +1636,26 @@
         }
 
         // 添加股票到自选
+        let watchlistSearchTimer = null;
+        async function debounceSearchWatchlist(keyword) {
+            clearTimeout(watchlistSearchTimer);
+            if (!keyword.trim()) {
+                document.getElementById('watchlistSearchResults').classList.add('hidden');
+                return;
+            }
+            watchlistSearchTimer = setTimeout(async () => {
+                const results = await searchWatchlistStock(keyword.trim());
+                if (results.length > 0) {
+                    showWatchlistSearchResults(results);
+                } else {
+                    document.getElementById('watchlistSearchResults').classList.add('hidden');
+                }
+            }, 300);
+        }
+
         async function addToWatchlist() {
             const input = document.getElementById('watchlistInput');
-            const keyword = input.value.trim().toUpperCase();
+            const keyword = input.value.trim();
             if (!keyword) return;
 
             // 搜索股票
@@ -1660,42 +1678,79 @@
 
         // 搜索股票
         async function searchWatchlistStock(keyword) {
-            // 先从缓存搜索
-            let results = allStocksCache.filter(s =>
-                s.code.includes(keyword) || s.name.includes(keyword)
-            );
+            if (!keyword) return [];
 
-            if (results.length === 0) {
-                try {
-                    const params = new URLSearchParams({
-                        pn: '1', pz: '10', po: '1', np: '1',
-                        ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2',
-                        fs: 'm:0+t:6,m:1+t:2',
-                        fields: 'f12,f14,f2,f3',
-                    });
-                    const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
-                    const response = await fetch(url);
-                    const result = await response.json();
-                    if (result.data?.diff) {
-                        results = result.data.diff
-                            .filter(item => item.f12 && item.f14)
-                            .filter(item =>
-                                (item.f12 ?? '').toString().includes(keyword) ||
-                                (item.f14 ?? '').toString().includes(keyword)
-                            )
-                            .map(item => ({
-                                code: item.f12,
-                                name: item.f14,
-                                price: parseFloat(item.f2 ?? 0),
-                                changePercent: parseFloat(item.f3 ?? 0)
-                            }));
-                    }
-                } catch (e) {
-                    console.error('搜索失败:', e);
+            // 先从缓存搜索
+            if (allStocksCache && allStocksCache.length > 0) {
+                const cacheResults = allStocksCache.filter(s =>
+                    (s.code && s.code.includes(keyword)) || (s.name && s.name.includes(keyword))
+                );
+                if (cacheResults.length > 0) {
+                    return cacheResults.slice(0, 10);
                 }
             }
 
-            return results.slice(0, 10);
+            // 使用东方财富搜索API
+            try {
+                const searchUrl = `https://suggest.eastmoney.com/suggest/default.aspx?name=suggestdata&key=${encodeURIComponent(keyword)}`;
+                const response = await fetch(searchUrl);
+                const text = await response.text();
+
+                // 解析 JSONP 格式: suggestdata("...")
+                const match = text.match(/suggestdata\((.+)\)/);
+                if (match && match[1]) {
+                    const data = JSON.parse(match[1]);
+                    if (data && Array.isArray(data)) {
+                        // 过滤只保留A股 (市场代码: 1=沪A, 2=深A)
+                        return data.filter(item => {
+                            const marketCode = item[2];
+                            // 沪A: 1, 深A: 2, 过滤掉创业板(300)和科创板(688)
+                            const code = item[1];
+                            return (marketCode === '1' || marketCode === '2') &&
+                                   !code.startsWith('300') && !code.startsWith('301') && !code.startsWith('688');
+                        }).map(item => ({
+                            code: item[1],
+                            name: item[0],
+                            price: 0,
+                            changePercent: 0
+                        })).slice(0, 10);
+                    }
+                }
+            } catch (e) {
+                console.error('搜索失败:', e);
+            }
+
+            // 备用方案：从股票列表API搜索
+            try {
+                const params = new URLSearchParams({
+                    pn: '1', pz: '100', po: '1', np: '1',
+                    ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2',
+                    fs: 'm:0+t:6,m:1+t:2',
+                    fields: 'f12,f14,f2,f3',
+                });
+                const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+                const response = await fetch(url);
+                const result = await response.json();
+                if (result.data?.diff) {
+                    const results = result.data.diff
+                        .filter(item => item.f12 && item.f14)
+                        .filter(item =>
+                            (item.f12 ?? '').toString().toLowerCase().includes(keyword.toLowerCase()) ||
+                            (item.f14 ?? '').toString().toLowerCase().includes(keyword.toLowerCase())
+                        )
+                        .map(item => ({
+                            code: item.f12,
+                            name: item.f14,
+                            price: parseFloat(item.f2 ?? 0),
+                            changePercent: parseFloat(item.f3 ?? 0)
+                        }));
+                    return results.slice(0, 10);
+                }
+            } catch (e) {
+                console.error('备用搜索失败:', e);
+            }
+
+            return [];
         }
 
         // 显示搜索结果
