@@ -648,6 +648,29 @@
                     </div>
                 </div>
 
+                <!-- 股票缓存同步 -->
+                <div class="border-t border-gray-200 pt-4 mt-4">
+                    <h4 class="font-semibold text-gray-900 mb-2">股票缓存同步</h4>
+                    <div class="flex items-center justify-between mb-3">
+                        <div>
+                            <p class="text-sm text-gray-600">已缓存 <span id="cacheStockCount" class="font-semibold text-blue-600">--</span> 只股票</p>
+                            <p class="text-xs text-gray-400">上次更新: <span id="cacheLastUpdate">--</span></p>
+                        </div>
+                        <button onclick="refreshCacheStats()" class="px-3 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200">
+                            刷新统计
+                        </button>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="syncFromEastmoney()" class="flex-1 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-medium">
+                            从东财同步
+                        </button>
+                        <button onclick="syncFromTushare()" class="flex-1 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-medium">
+                            从Tushare同步
+                        </button>
+                    </div>
+                    <p id="syncStatus" class="text-xs text-gray-400 mt-2 hidden"></p>
+                </div>
+
                 <!-- 使用说明 -->
                 <div class="border-t border-gray-200 pt-4 mt-4">
                     <h4 class="font-semibold text-gray-900 mb-2">使用说明</h4>
@@ -3041,19 +3064,40 @@
             }
         }
 
-        // 搜索股票（自选盯盘专用，混合数据源）
+        // 搜索股票（自选盯盘专用，混合数据源 + 后端缓存）
         async function searchWatchlistStock(keyword) {
             if (!keyword) return [];
 
             keyword = keyword.toLowerCase().trim();
+            let results = [];
 
-            // 确保已预加载股票数据
+            // 1. 优先从后端数据库缓存搜索
+            console.log('[自选搜索] 尝试后端数据库缓存...');
+            try {
+                const response = await fetch(`/api/stock/search?keyword=${encodeURIComponent(keyword)}&limit=10`);
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.code === 200 && result.data && result.data.length > 0) {
+                        results = result.data.map(s => ({
+                            code: s.code,
+                            name: s.name,
+                            changePercent: parseFloat(s.change_percent) || 0,
+                            _source: 'database'
+                        }));
+                        console.log(`[自选搜索] 数据库找到 ${results.length} 条`);
+                        return results;
+                    }
+                }
+            } catch (e) {
+                console.warn('[自选搜索] 后端数据库搜索失败:', e.message);
+            }
+
+            // 2. 确保已预加载股票数据
             if (!allAStocksLoaded) {
                 await preloadAllAStocks();
             }
 
-            // 1. 从预加载数据搜索
-            let results = [];
+            // 3. 从预加载数据搜索
             if (allAStocksCache.length > 0) {
                 results = allAStocksCache.filter(s => {
                     const code = (s.code || '').toLowerCase();
@@ -3062,7 +3106,7 @@
                 }).map(s => ({ ...s, _source: 'eastmoney' }));
             }
 
-            // 2. 如果预加载数据没找到，尝试其他数据源
+            // 4. 如果预加载数据没找到，尝试其他数据源
             if (results.length === 0) {
                 console.log('[自选搜索] 预加载数据未找到，尝试其他数据源...');
                 
@@ -3124,12 +3168,14 @@
             
             // 数据来源标签颜色
             const sourceColors = {
+                'database': 'bg-emerald-100 text-emerald-600',
                 'eastmoney': 'bg-red-100 text-red-600',
                 'tushare': 'bg-blue-100 text-blue-600',
                 'sina': 'bg-green-100 text-green-600',
                 'tencent': 'bg-purple-100 text-purple-600'
             };
             const sourceNames = {
+                'database': '数据库',
                 'eastmoney': '东财',
                 'tushare': 'Tushare',
                 'sina': '新浪',
@@ -4258,7 +4304,7 @@
             document.getElementById('searchModal').classList.add('hidden');
         }
 
-        // 搜索股票（混合数据源）
+        // 搜索股票（混合数据源 + 后端缓存）
         async function searchStock(keyword) {
             if (!keyword || keyword.trim() === '') {
                 if (allStocksCache.length > 0) {
@@ -4271,12 +4317,43 @@
             const resultsEl = document.getElementById('searchResults');
             resultsEl.innerHTML = `<p class="text-gray-400 text-center text-sm">搜索中...</p>`;
 
-            // 1. 先从缓存搜索
-            let results = allStocksCache.filter(s =>
-                s.code.includes(keyword) || s.name.includes(keyword)
-            );
+            let results = [];
 
-            // 2. 如果缓存没结果，尝试从东方财富API搜索
+            // 1. 优先从后端数据库缓存搜索
+            console.log('[搜索] 尝试后端数据库缓存...');
+            try {
+                const response = await fetch(`/api/stock/search?keyword=${encodeURIComponent(keyword)}&limit=20`);
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.code === 200 && result.data && result.data.length > 0) {
+                        results = result.data.map(s => ({
+                            code: s.code,
+                            name: s.name,
+                            price: parseFloat(s.price) || 0,
+                            changePercent: parseFloat(s.change_percent) || 0,
+                            mainInflow: parseFloat(s.main_inflow) || 0,
+                            volume: parseFloat(s.volume) || 0,
+                            turnoverRate: parseFloat(s.turnover_rate) || 0,
+                            _source: 'database'
+                        }));
+                        console.log(`[搜索] 数据库找到 ${results.length} 条`);
+                    }
+                }
+            } catch (e) {
+                console.warn('[搜索] 后端数据库搜索失败:', e.message);
+            }
+
+            // 2. 如果数据库没结果，从本地缓存搜索
+            if (results.length === 0) {
+                results = allStocksCache.filter(s =>
+                    s.code.includes(keyword) || s.name.includes(keyword)
+                );
+                if (results.length > 0) {
+                    console.log(`[搜索] 本地缓存找到 ${results.length} 条`);
+                }
+            }
+
+            // 3. 如果本地缓存也没结果，尝试从东方财富API搜索
             if (results.length === 0) {
                 console.log('[搜索] 尝试东方财富API...');
                 try {
@@ -4316,7 +4393,7 @@
                 }
             }
 
-            // 3. 如果东方财富也没结果，尝试Tushare搜索
+            // 4. 如果东方财富也没结果，尝试Tushare搜索
             if (results.length === 0 && TUSHARE_CONFIG.hasToken()) {
                 console.log('[搜索] 尝试Tushare API...');
                 try {
@@ -4331,7 +4408,7 @@
                 }
             }
 
-            // 4. 如果Tushare也没结果，尝试新浪/腾讯实时数据
+            // 5. 如果Tushare也没结果，尝试新浪/腾讯实时数据
             if (results.length === 0) {
                 console.log('[搜索] 尝试新浪/腾讯API...');
                 
@@ -4740,6 +4817,77 @@
             }
             
             listEl.innerHTML = html;
+            
+            // 同时刷新缓存统计
+            refreshCacheStats();
+        }
+
+        // 刷新缓存统计
+        async function refreshCacheStats() {
+            try {
+                const response = await fetch('/api/stock/cache/stats');
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.code === 200 && result.data) {
+                        document.getElementById('cacheStockCount').textContent = result.data.total || 0;
+                        if (result.data.lastUpdate) {
+                            document.getElementById('cacheLastUpdate').textContent = new Date(result.data.lastUpdate).toLocaleString('zh-CN');
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('获取缓存统计失败:', e.message);
+            }
+        }
+
+        // 从东方财富同步
+        async function syncFromEastmoney() {
+            const statusEl = document.getElementById('syncStatus');
+            statusEl.classList.remove('hidden');
+            statusEl.textContent = '正在从东方财富同步股票数据...';
+            statusEl.className = 'text-xs text-blue-500 mt-2';
+            
+            try {
+                const response = await fetch('/api/stock/cache/sync/eastmoney', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.code === 200 && result.data) {
+                    statusEl.textContent = `同步完成！成功: ${result.data.success}, 失败: ${result.data.failed}`;
+                    statusEl.className = 'text-xs text-green-500 mt-2';
+                    refreshCacheStats();
+                } else {
+                    statusEl.textContent = '同步失败: ' + (result.message || '未知错误');
+                    statusEl.className = 'text-xs text-red-500 mt-2';
+                }
+            } catch (e) {
+                statusEl.textContent = '同步失败: ' + e.message;
+                statusEl.className = 'text-xs text-red-500 mt-2';
+            }
+        }
+
+        // 从Tushare同步
+        async function syncFromTushare() {
+            const statusEl = document.getElementById('syncStatus');
+            statusEl.classList.remove('hidden');
+            statusEl.textContent = '正在从Tushare同步股票数据...';
+            statusEl.className = 'text-xs text-blue-500 mt-2';
+            
+            try {
+                const response = await fetch('/api/stock/cache/sync/tushare', { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.code === 200 && result.data) {
+                    statusEl.textContent = `同步完成！成功: ${result.data.success}, 失败: ${result.data.failed}`;
+                    statusEl.className = 'text-xs text-green-500 mt-2';
+                    refreshCacheStats();
+                } else {
+                    statusEl.textContent = '同步失败: ' + (result.message || '未知错误');
+                    statusEl.className = 'text-xs text-red-500 mt-2';
+                }
+            } catch (e) {
+                statusEl.textContent = '同步失败: ' + e.message;
+                statusEl.className = 'text-xs text-red-500 mt-2';
+            }
         }
 
         // 更新最后更新时间
