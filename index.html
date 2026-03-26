@@ -123,7 +123,7 @@
 
     <!-- 智能选股说明 -->
     <div id="smartPickTip" class="hidden bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-200 px-4 py-2">
-        <p class="text-xs text-emerald-700">🎯 基于主力资金、尾盘流入、换手率、量比等多维度智能选股，下午2:30自动筛选次日大概率上涨股票</p>
+        <p class="text-xs text-emerald-700">🎯 基于主力资金、尾盘流入、换手率、量比等多维度智能选股，筛选股价3-30元潜力股，下午2:30自动筛选次日大概率上涨股票</p>
     </div>
 
     <!-- 智能选股统计栏 -->
@@ -2580,6 +2580,8 @@
             minTurnoverRate: 3,      // 最低换手率
             maxTurnoverRate: 20,     // 最高换手率
             minVolume: 100000000,    // 最低成交额1亿
+            minPrice: 3,             // 最低股价3元
+            maxPrice: 30,            // 最高股价30元
             triggerTime: [14, 30],   // 触发时间 14:30
         };
 
@@ -2745,6 +2747,7 @@
                     .filter(item => {
                         if (!item.f12 || !item.f14) return false;
                         const code = item.f12;
+                        const price = parseFloat(item.f2 ?? 0);
                         const changePercent = parseFloat(item.f3 ?? 0);
                         const mainInflow = parseFloat(item.f62 ?? 0);
                         const turnoverRate = parseFloat(item.f8 ?? 0);
@@ -2752,6 +2755,8 @@
 
                         if (code.startsWith('688') || code.startsWith('300') || code.startsWith('301')) return false;
                         if ((item.f14 || '').includes('ST')) return false;
+                        // 股价筛选：3-30元
+                        if (price < SMART_PICK_CONFIG.minPrice || price > SMART_PICK_CONFIG.maxPrice) return false;
                         if (changePercent < SMART_PICK_CONFIG.minChangePercent || 
                             changePercent >= SMART_PICK_CONFIG.maxChangePercent) return false;
                         if (mainInflow < SMART_PICK_CONFIG.minMainInflow) return false;
@@ -2789,10 +2794,14 @@
             if (tushareStocks.length > 0) {
                 tushareStocks.forEach(ts => {
                     if (!candidates.find(c => c.code === ts.code)) {
-                        if (ts.mainInflow >= SMART_PICK_CONFIG.minMainInflow) {
+                        // 价格筛选：3-30元
+                        const tsPrice = ts.price || 0;
+                        if (ts.mainInflow >= SMART_PICK_CONFIG.minMainInflow && 
+                            tsPrice >= SMART_PICK_CONFIG.minPrice && 
+                            tsPrice <= SMART_PICK_CONFIG.maxPrice) {
                             const stock = {
                                 code: ts.code, name: ts.name || ts.code,
-                                price: ts.price || 0, changePercent: ts.changePercent || 0,
+                                price: tsPrice, changePercent: ts.changePercent || 0,
                                 mainInflow: ts.mainInflow, volume: ts.volume,
                                 turnoverRate: ts.turnoverRate || 0,
                                 lateInflow: 0, superInflow: ts.superInflow || 0,
@@ -2835,7 +2844,7 @@
                         </svg>
                         <p class="text-gray-400 text-lg mb-2">暂无符合条件的股票</p>
                         <p class="text-gray-400 text-sm mb-4">当前市场环境不满足选股条件</p>
-                        <p class="text-gray-400 text-xs">选股条件：主力流入>5000万、涨幅0%-7%、换手率3%-20%</p>
+                        <p class="text-gray-400 text-xs">选股条件：主力流入>5000万、涨幅0%-7%、换手率3%-20%、股价3-30元</p>
                     </div>
                 `;
                 return;
