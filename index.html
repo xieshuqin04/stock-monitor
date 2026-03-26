@@ -777,6 +777,12 @@
 
         // 获取股票数据
         async function fetchStockData() {
+            // 检查当前Tab是否正在监控，如果不在监控则不获取数据
+            if (!tabMonitorState[currentTab] || !tabMonitorState[currentTab].isMonitoring) {
+                console.log(`当前Tab ${currentTab} 未开启监控，跳过数据获取`);
+                return;
+            }
+            
             const listEl = document.getElementById('stockList');
             const loadingTexts = {
                 auction: '加载集合竞价数据...',
