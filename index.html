@@ -1675,14 +1675,16 @@
             if (!result.data?.diff) throw new Error('数据为空');
 
             return result.data.diff.filter(item => item.f12 && item.f14).map(item => {
-                const mainInflow = parseFloat(item.f62 ?? 0);  // 主力净流入
-                const superInflow = parseFloat(item.f84 ?? 0); // 超大单净流入
-                const bigInflow = parseFloat(item.f78 ?? 0);   // 大单净流入
-                const midInflow = parseFloat(item.f85 ?? 0);   // 中单净流入
-                const smallInflow = parseFloat(item.f92 ?? 0); // 小单净流入
+                const mainInflow = parseFloat(item.f62 ?? 0);      // 主力净流入（元）
+                const volume = parseFloat(item.f6 ?? 0);           // 成交额（元）
+                const superInflow = parseFloat(item.f84 ?? 0);     // 超大单净流入（元）
+                const bigInflow = parseFloat(item.f78 ?? 0);       // 大单净流入（元）
+                const midPercent = parseFloat(item.f85 ?? 0);      // 中单净占比（%）
+                const smallPercent = parseFloat(item.f92 ?? 0);    // 小单净占比（%）
                 
-                // 散户资金 = 中单 + 小单
-                const retailInflow = midInflow + smallInflow;
+                // 散户资金 = 成交额 * (中单占比 + 小单占比) / 100
+                // 注意：f85和f92可能是占比百分比，不是金额
+                const retailInflow = volume * (midPercent + smallPercent) / 100;
                 // 暗盘资金 = 模拟为大宗交易数据（基于主力资金的一定比例）
                 const darkPoolInflow = mainInflow * (0.1 + Math.random() * 0.15);
                 
@@ -1695,7 +1697,7 @@
                     retailInflow: retailInflow,
                     darkPoolInflow: darkPoolInflow,
                     inflowRatio: parseFloat(item.f66 ?? 0), 
-                    volume: parseFloat(item.f6 ?? 0),
+                    volume: volume,
                     turnoverRate: parseFloat(item.f8 ?? 0), 
                     high: parseFloat(item.f15 ?? 0),
                     low: parseFloat(item.f16 ?? 0),
@@ -1991,12 +1993,14 @@
             if (!result.data?.diff) throw new Error('数据为空');
 
             return result.data.diff.filter(item => item.f12 && item.f14).map(item => {
-                const mainInflow = parseFloat(item.f62 ?? 0);      // 主力净流入
-                const mediumInflow = parseFloat(item.f85 ?? 0);    // 中单净流入
-                const smallInflow = parseFloat(item.f92 ?? 0);     // 小单净流入
+                const mainInflow = parseFloat(item.f62 ?? 0);      // 主力净流入（元）
+                const volume = parseFloat(item.f6 ?? 0);           // 成交额（元）
+                const mediumPercent = parseFloat(item.f85 ?? 0);   // 中单净占比（%）
+                const smallPercent = parseFloat(item.f92 ?? 0);    // 小单净占比（%）
                 
-                // 散户资金 = 中单 + 小单
-                const retailInflow = mediumInflow + smallInflow;
+                // 散户资金 = 成交额 * (中单占比 + 小单占比) / 100
+                // 注意：f85和f92可能是占比百分比，不是金额
+                const retailInflow = volume * (mediumPercent + smallPercent) / 100;
                 // 暗盘资金 = 模拟为大宗交易数据（基于主力资金的一定比例）
                 const darkPoolInflow = mainInflow * (0.1 + Math.random() * 0.15);
                 
@@ -2011,9 +2015,9 @@
                     inflowRatio: parseFloat(item.f66 ?? 0),
                     superInflow: parseFloat(item.f84 ?? 0),
                     bigInflow: parseFloat(item.f78 ?? 0),
-                    mediumInflow: mediumInflow,
-                    smallInflow: smallInflow,
-                    volume: parseFloat(item.f6 ?? 0),
+                    mediumInflow: mediumPercent,  // 保留原始值（可能是占比）
+                    smallInflow: smallPercent,    // 保留原始值（可能是占比）
+                    volume: volume,
                     turnoverRate: parseFloat(item.f8 ?? 0),
                     high: parseFloat(item.f15 ?? 0),
                     low: parseFloat(item.f16 ?? 0),
@@ -2526,18 +2530,30 @@
                     const data = allStocks.find(s => s.f12 === stockInfo.code);
                     if (data) {
                         console.log(`找到 ${stockInfo.code}:`, data.f14);
+                        const mainInflow = parseFloat(data.f62 ?? 0);
+                        const volume = parseFloat(data.f6 ?? 0);
+                        const mediumPercent = parseFloat(data.f85 ?? 0);
+                        const smallPercent = parseFloat(data.f92 ?? 0);
+                        
+                        // 散户资金 = 成交额 * (中单占比 + 小单占比) / 100
+                        const retailInflow = volume * (mediumPercent + smallPercent) / 100;
+                        // 暗盘资金 = 模拟为大宗交易数据
+                        const darkPoolInflow = mainInflow * (0.1 + Math.random() * 0.15);
+                        
                         results.push({
                             code: stockInfo.code,
                             name: data.f14 || stockInfo.name,
                             price: parseFloat(data.f2 ?? 0),
                             changePercent: parseFloat(data.f3 ?? 0),
-                            mainInflow: parseFloat(data.f62 ?? 0),
+                            mainInflow: mainInflow,
+                            retailInflow: retailInflow,
+                            darkPoolInflow: darkPoolInflow,
                             inflowRatio: parseFloat(data.f66 ?? 0),
                             superInflow: parseFloat(data.f84 ?? 0),
                             bigInflow: parseFloat(data.f78 ?? 0),
-                            mediumInflow: parseFloat(data.f85 ?? 0),
-                            smallInflow: parseFloat(data.f92 ?? 0),
-                            volume: parseFloat(data.f6 ?? 0),
+                            mediumInflow: mediumPercent,
+                            smallInflow: smallPercent,
+                            volume: volume,
                             turnoverRate: parseFloat(data.f8 ?? 0),
                             high: parseFloat(data.f15 ?? 0),
                             low: parseFloat(data.f16 ?? 0),
@@ -2555,6 +2571,8 @@
                             price: 0,
                             changePercent: 0,
                             mainInflow: 0,
+                            retailInflow: 0,
+                            darkPoolInflow: 0,
                             inflowRatio: 0,
                             superInflow: 0,
                             bigInflow: 0,
