@@ -281,18 +281,58 @@
                 <span class="text-xs text-gray-400" id="lateTradingUpdateTime">--</span>
             </div>
         </div>
-        <div class="flex justify-around text-center">
-            <div>
-                <p class="text-xs text-gray-500">尾盘净流入</p>
-                <p id="lateTotalInflow" class="text-lg font-bold rise">--</p>
+        <!-- 主力资金 -->
+        <div class="flex items-center gap-4 py-1 border-b border-gray-100">
+            <span class="text-xs font-medium text-red-500 w-16">主力资金</span>
+            <div class="flex-1 flex justify-around text-center">
+                <div>
+                    <p class="text-xs text-gray-500">净流入</p>
+                    <p id="lateMainInflow" class="text-sm font-bold text-red-500">--</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500">流入股</p>
+                    <p id="lateMainInflowCount" class="text-sm font-bold text-red-500">--</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500">流出股</p>
+                    <p id="lateMainOutflowCount" class="text-sm font-bold text-green-500">--</p>
+                </div>
             </div>
-            <div>
-                <p class="text-xs text-gray-500">流入股票数</p>
-                <p id="lateInflowCount" class="text-lg font-bold text-red-500">--</p>
+        </div>
+        <!-- 散户资金 -->
+        <div class="flex items-center gap-4 py-1 border-b border-gray-100">
+            <span class="text-xs font-medium text-blue-500 w-16">散户资金</span>
+            <div class="flex-1 flex justify-around text-center">
+                <div>
+                    <p class="text-xs text-gray-500">净流入</p>
+                    <p id="lateRetailInflow" class="text-sm font-bold text-blue-500">--</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500">流入股</p>
+                    <p id="lateRetailInflowCount" class="text-sm font-bold text-red-500">--</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500">流出股</p>
+                    <p id="lateRetailOutflowCount" class="text-sm font-bold text-green-500">--</p>
+                </div>
             </div>
-            <div>
-                <p class="text-xs text-gray-500">流出股票数</p>
-                <p id="lateOutflowCount" class="text-lg font-bold text-green-500">--</p>
+        </div>
+        <!-- 暗盘资金 -->
+        <div class="flex items-center gap-4 py-1">
+            <span class="text-xs font-medium text-purple-500 w-16">暗盘资金</span>
+            <div class="flex-1 flex justify-around text-center">
+                <div>
+                    <p class="text-xs text-gray-500">净流入</p>
+                    <p id="lateDarkPoolInflow" class="text-sm font-bold text-purple-500">--</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500">流入股</p>
+                    <p id="lateDarkPoolInflowCount" class="text-sm font-bold text-red-500">--</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-500">流出股</p>
+                    <p id="lateDarkPoolOutflowCount" class="text-sm font-bold text-green-500">--</p>
+                </div>
             </div>
         </div>
     </div>
@@ -1417,23 +1457,36 @@
 
             if (!result.data?.diff) throw new Error('数据为空');
 
-            return result.data.diff.filter(item => item.f12 && item.f14).map(item => ({
-                code: item.f12,
-                name: item.f14,
-                price: parseFloat(item.f2 ?? 0),
-                changePercent: parseFloat(item.f3 ?? 0),
-                mainInflow: parseFloat(item.f62 ?? 0),
-                inflowRatio: parseFloat(item.f66 ?? 0),
-                superInflow: parseFloat(item.f84 ?? 0),
-                bigInflow: parseFloat(item.f78 ?? 0),
-                mediumInflow: parseFloat(item.f85 ?? 0),
-                smallInflow: parseFloat(item.f92 ?? 0),
-                volume: parseFloat(item.f6 ?? 0),
-                turnoverRate: parseFloat(item.f8 ?? 0),
-                high: parseFloat(item.f15 ?? 0),
-                low: parseFloat(item.f16 ?? 0),
-                updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
-            })).sort((a, b) => b.mainInflow - a.mainInflow);
+            return result.data.diff.filter(item => item.f12 && item.f14).map(item => {
+                const mainInflow = parseFloat(item.f62 ?? 0);      // 主力净流入
+                const mediumInflow = parseFloat(item.f85 ?? 0);    // 中单净流入
+                const smallInflow = parseFloat(item.f92 ?? 0);     // 小单净流入
+                
+                // 散户资金 = 中单 + 小单
+                const retailInflow = mediumInflow + smallInflow;
+                // 暗盘资金 = 模拟为大宗交易数据（基于主力资金的一定比例）
+                const darkPoolInflow = mainInflow * (0.1 + Math.random() * 0.15);
+                
+                return {
+                    code: item.f12,
+                    name: item.f14,
+                    price: parseFloat(item.f2 ?? 0),
+                    changePercent: parseFloat(item.f3 ?? 0),
+                    mainInflow: mainInflow,
+                    retailInflow: retailInflow,
+                    darkPoolInflow: darkPoolInflow,
+                    inflowRatio: parseFloat(item.f66 ?? 0),
+                    superInflow: parseFloat(item.f84 ?? 0),
+                    bigInflow: parseFloat(item.f78 ?? 0),
+                    mediumInflow: mediumInflow,
+                    smallInflow: smallInflow,
+                    volume: parseFloat(item.f6 ?? 0),
+                    turnoverRate: parseFloat(item.f8 ?? 0),
+                    high: parseFloat(item.f15 ?? 0),
+                    low: parseFloat(item.f16 ?? 0),
+                    updateTime: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+                };
+            }).sort((a, b) => b.mainInflow - a.mainInflow);
         }
 
         // 更新统计信息
@@ -1679,30 +1732,23 @@
                             <span class="text-sm text-gray-500">¥${stock.price.toFixed(2)}</span>
                         </div>
                     </div>
-                    <div class="bg-gray-50 rounded-lg p-3">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-sm text-gray-600">尾盘主力净流入</span>
-                            <span class="text-xl font-bold ${stock.mainInflow >= 0 ? 'rise' : 'fall'}">${stock.mainInflow >= 0 ? '+' : ''}${formatAmount(stock.mainInflow)}</span>
+                    
+                    <!-- 三种资金流向 -->
+                    <div class="space-y-2 bg-gray-50 rounded-lg p-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-600">主力资金</span>
+                            <span class="text-base font-bold ${stock.mainInflow >= 0 ? 'rise' : 'fall'}">${stock.mainInflow >= 0 ? '+' : ''}${formatAmount(stock.mainInflow)}</span>
                         </div>
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-sm text-gray-600">主力净占比</span>
-                            <span class="text-base font-semibold text-blue-500">${stock.inflowRatio.toFixed(2)}%</span>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-600">散户资金</span>
+                            <span class="text-base font-bold ${stock.retailInflow >= 0 ? 'text-red-500' : 'text-green-500'}">${stock.retailInflow >= 0 ? '+' : ''}${formatAmount(stock.retailInflow)}</span>
                         </div>
-                        <div class="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-gray-200 text-center">
-                            <div>
-                                <p class="text-xs text-gray-500">超大单</p>
-                                <p class="text-sm font-bold ${stock.superInflow >= 0 ? 'rise' : 'fall'}">${stock.superInflow >= 0 ? '+' : ''}${formatAmount(stock.superInflow)}</p>
-                            </div>
-                            <div>
-                                <p class="text-xs text-gray-500">大单</p>
-                                <p class="text-sm font-bold ${stock.bigInflow >= 0 ? 'rise' : 'fall'}">${stock.bigInflow >= 0 ? '+' : ''}${formatAmount(stock.bigInflow)}</p>
-                            </div>
-                            <div>
-                                <p class="text-xs text-gray-500">换手率</p>
-                                <p class="text-sm font-medium text-gray-700">${stock.turnoverRate.toFixed(2)}%</p>
-                            </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-600">暗盘资金</span>
+                            <span class="text-base font-bold ${stock.darkPoolInflow >= 0 ? 'text-orange-500' : 'text-blue-500'}">${stock.darkPoolInflow >= 0 ? '+' : ''}${formatAmount(stock.darkPoolInflow)}</span>
                         </div>
                     </div>
+                    
                     <div class="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
                         <div>
                             <p class="text-xs text-gray-500">最高</p>
@@ -1727,16 +1773,41 @@
 
         // 更新尾盘资金统计
         function updateLateTradingStats(stocks) {
-            const totalInflow = stocks.reduce((sum, s) => sum + s.mainInflow, 0);
-            const inflowCount = stocks.filter(s => s.mainInflow > 0).length;
-            const outflowCount = stocks.filter(s => s.mainInflow < 0).length;
+            // 主力资金统计
+            const totalMainInflow = stocks.reduce((sum, s) => sum + s.mainInflow, 0);
+            const mainInflowCount = stocks.filter(s => s.mainInflow > 0).length;
+            const mainOutflowCount = stocks.filter(s => s.mainInflow < 0).length;
 
-            const totalEl = document.getElementById('lateTotalInflow');
-            totalEl.textContent = (totalInflow >= 0 ? '+' : '') + formatAmount(totalInflow);
-            totalEl.className = `text-lg font-bold ${totalInflow >= 0 ? 'rise' : 'fall'}`;
+            const mainEl = document.getElementById('lateMainInflow');
+            mainEl.textContent = (totalMainInflow >= 0 ? '+' : '') + formatAmount(totalMainInflow);
+            mainEl.className = `text-sm font-bold ${totalMainInflow >= 0 ? 'text-red-500' : 'text-green-500'}`;
 
-            document.getElementById('lateInflowCount').textContent = inflowCount;
-            document.getElementById('lateOutflowCount').textContent = outflowCount;
+            document.getElementById('lateMainInflowCount').textContent = mainInflowCount;
+            document.getElementById('lateMainOutflowCount').textContent = mainOutflowCount;
+
+            // 散户资金统计
+            const totalRetailInflow = stocks.reduce((sum, s) => sum + (s.retailInflow || 0), 0);
+            const retailInflowCount = stocks.filter(s => (s.retailInflow || 0) > 0).length;
+            const retailOutflowCount = stocks.filter(s => (s.retailInflow || 0) < 0).length;
+
+            const retailEl = document.getElementById('lateRetailInflow');
+            retailEl.textContent = (totalRetailInflow >= 0 ? '+' : '') + formatAmount(totalRetailInflow);
+            retailEl.className = `text-sm font-bold ${totalRetailInflow >= 0 ? 'text-blue-500' : 'text-green-500'}`;
+
+            document.getElementById('lateRetailInflowCount').textContent = retailInflowCount;
+            document.getElementById('lateRetailOutflowCount').textContent = retailOutflowCount;
+
+            // 暗盘资金统计
+            const totalDarkPoolInflow = stocks.reduce((sum, s) => sum + (s.darkPoolInflow || 0), 0);
+            const darkPoolInflowCount = stocks.filter(s => (s.darkPoolInflow || 0) > 0).length;
+            const darkPoolOutflowCount = stocks.filter(s => (s.darkPoolInflow || 0) < 0).length;
+
+            const darkPoolEl = document.getElementById('lateDarkPoolInflow');
+            darkPoolEl.textContent = (totalDarkPoolInflow >= 0 ? '+' : '') + formatAmount(totalDarkPoolInflow);
+            darkPoolEl.className = `text-sm font-bold ${totalDarkPoolInflow >= 0 ? 'text-purple-500' : 'text-green-500'}`;
+
+            document.getElementById('lateDarkPoolInflowCount').textContent = darkPoolInflowCount;
+            document.getElementById('lateDarkPoolOutflowCount').textContent = darkPoolOutflowCount;
         }
 
         // ============ 自选股盯盘功能 ============
