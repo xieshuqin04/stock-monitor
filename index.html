@@ -674,6 +674,7 @@
                 document.getElementById('watchlistStatsBar').classList.remove('hidden');
                 document.getElementById('watchlistAddArea').classList.remove('hidden');
                 document.getElementById('watchlistTip').classList.remove('hidden');
+                preloadAllAStocks(); // 确保搜索数据已加载
             } else {
                 document.getElementById('statsBar').classList.remove('hidden');
             }
@@ -1635,6 +1636,40 @@
             localStorage.setItem('stockWatchlist', JSON.stringify(watchlist));
         }
 
+        // 全量A股股票缓存（用于搜索）
+        let allAStocksCache = [];
+        let allAStocksLoaded = false;
+
+        // 预加载全部A股股票数据
+        async function preloadAllAStocks() {
+            if (allAStocksLoaded && allAStocksCache.length > 0) return;
+
+            try {
+                const params = new URLSearchParams({
+                    pn: '1', pz: '6000', po: '1', np: '1',
+                    ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2',
+                    fs: 'm:0+t:6,m:1+t:2', // 只获取主板
+                    fields: 'f12,f14',
+                });
+                const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (result.data?.diff) {
+                    allAStocksCache = result.data.diff
+                        .filter(item => item.f12 && item.f14)
+                        .map(item => ({
+                            code: item.f12,
+                            name: item.f14,
+                        }));
+                    allAStocksLoaded = true;
+                    console.log(`已预加载 ${allAStocksCache.length} 只A股数据`);
+                }
+            } catch (e) {
+                console.error('预加载股票数据失败:', e);
+            }
+        }
+
         // 添加股票到自选
         let watchlistSearchTimer = null;
         async function debounceSearchWatchlist(keyword) {
@@ -1680,74 +1715,21 @@
         async function searchWatchlistStock(keyword) {
             if (!keyword) return [];
 
-            // 先从缓存搜索
-            if (allStocksCache && allStocksCache.length > 0) {
-                const cacheResults = allStocksCache.filter(s =>
-                    (s.code && s.code.includes(keyword)) || (s.name && s.name.includes(keyword))
-                );
-                if (cacheResults.length > 0) {
-                    return cacheResults.slice(0, 10);
-                }
+            keyword = keyword.toLowerCase();
+
+            // 确保已预加载股票数据
+            if (!allAStocksLoaded) {
+                await preloadAllAStocks();
             }
 
-            // 使用东方财富搜索API
-            try {
-                const searchUrl = `https://suggest.eastmoney.com/suggest/default.aspx?name=suggestdata&key=${encodeURIComponent(keyword)}`;
-                const response = await fetch(searchUrl);
-                const text = await response.text();
-
-                // 解析 JSONP 格式: suggestdata("...")
-                const match = text.match(/suggestdata\((.+)\)/);
-                if (match && match[1]) {
-                    const data = JSON.parse(match[1]);
-                    if (data && Array.isArray(data)) {
-                        // 过滤只保留A股 (市场代码: 1=沪A, 2=深A)
-                        return data.filter(item => {
-                            const marketCode = item[2];
-                            // 沪A: 1, 深A: 2, 过滤掉创业板(300)和科创板(688)
-                            const code = item[1];
-                            return (marketCode === '1' || marketCode === '2') &&
-                                   !code.startsWith('300') && !code.startsWith('301') && !code.startsWith('688');
-                        }).map(item => ({
-                            code: item[1],
-                            name: item[0],
-                            price: 0,
-                            changePercent: 0
-                        })).slice(0, 10);
-                    }
-                }
-            } catch (e) {
-                console.error('搜索失败:', e);
-            }
-
-            // 备用方案：从股票列表API搜索
-            try {
-                const params = new URLSearchParams({
-                    pn: '1', pz: '100', po: '1', np: '1',
-                    ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2',
-                    fs: 'm:0+t:6,m:1+t:2',
-                    fields: 'f12,f14,f2,f3',
+            // 从预加载数据搜索
+            if (allAStocksCache.length > 0) {
+                const results = allAStocksCache.filter(s => {
+                    const code = (s.code || '').toLowerCase();
+                    const name = (s.name || '').toLowerCase();
+                    return code.includes(keyword) || name.includes(keyword);
                 });
-                const url = `https://push2.eastmoney.com/api/qt/clist/get?${params}`;
-                const response = await fetch(url);
-                const result = await response.json();
-                if (result.data?.diff) {
-                    const results = result.data.diff
-                        .filter(item => item.f12 && item.f14)
-                        .filter(item =>
-                            (item.f12 ?? '').toString().toLowerCase().includes(keyword.toLowerCase()) ||
-                            (item.f14 ?? '').toString().toLowerCase().includes(keyword.toLowerCase())
-                        )
-                        .map(item => ({
-                            code: item.f12,
-                            name: item.f14,
-                            price: parseFloat(item.f2 ?? 0),
-                            changePercent: parseFloat(item.f3 ?? 0)
-                        }));
-                    return results.slice(0, 10);
-                }
-            } catch (e) {
-                console.error('备用搜索失败:', e);
+                return results.slice(0, 10);
             }
 
             return [];
@@ -2904,6 +2886,7 @@
         updateStatus();
         setInterval(updateStatus, 1000);
         startAutoMonitor(); // 启动自动监控检测
+        preloadAllAStocks(); // 预加载全部A股数据用于搜索
     </script>
 </body>
 </html>
