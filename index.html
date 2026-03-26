@@ -3041,41 +3041,116 @@
             }
         }
 
-        // 搜索股票
+        // 搜索股票（自选盯盘专用，混合数据源）
         async function searchWatchlistStock(keyword) {
             if (!keyword) return [];
 
-            keyword = keyword.toLowerCase();
+            keyword = keyword.toLowerCase().trim();
 
             // 确保已预加载股票数据
             if (!allAStocksLoaded) {
                 await preloadAllAStocks();
             }
 
-            // 从预加载数据搜索
+            // 1. 从预加载数据搜索
+            let results = [];
             if (allAStocksCache.length > 0) {
-                const results = allAStocksCache.filter(s => {
+                results = allAStocksCache.filter(s => {
                     const code = (s.code || '').toLowerCase();
                     const name = (s.name || '').toLowerCase();
                     return code.includes(keyword) || name.includes(keyword);
-                });
-                return results.slice(0, 10);
+                }).map(s => ({ ...s, _source: 'eastmoney' }));
             }
 
-            return [];
+            // 2. 如果预加载数据没找到，尝试其他数据源
+            if (results.length === 0) {
+                console.log('[自选搜索] 预加载数据未找到，尝试其他数据源...');
+                
+                // 尝试Tushare
+                if (TUSHARE_CONFIG.hasToken()) {
+                    try {
+                        const tushareResult = await searchFromTushare(keyword.toUpperCase());
+                        if (tushareResult && tushareResult.length > 0) {
+                            results = tushareResult;
+                            console.log(`[自选搜索] Tushare找到 ${results.length} 条`);
+                        }
+                    } catch (e) {
+                        console.error('[自选搜索] Tushare失败:', e.message);
+                    }
+                }
+
+                // 尝试新浪/腾讯（如果是6位数字代码）
+                if (results.length === 0 && /^\d{6}$/.test(keyword)) {
+                    try {
+                        const sinaData = await fetchSinaRealtimeData([keyword]);
+                        if (sinaData && sinaData.length > 0) {
+                            results = sinaData.map(s => ({
+                                code: s.code,
+                                name: s.name,
+                                _source: 'sina'
+                            }));
+                            console.log(`[自选搜索] 新浪找到 ${results.length} 条`);
+                        }
+                    } catch (e) {
+                        console.error('[自选搜索] 新浪失败:', e.message);
+                    }
+
+                    // 尝试腾讯
+                    if (results.length === 0) {
+                        try {
+                            const tencentData = await fetchTencentRealtimeData([keyword]);
+                            if (tencentData && tencentData.length > 0) {
+                                results = tencentData.map(s => ({
+                                    code: s.code,
+                                    name: s.name,
+                                    _source: 'tencent'
+                                }));
+                                console.log(`[自选搜索] 腾讯找到 ${results.length} 条`);
+                            }
+                        } catch (e) {
+                            console.error('[自选搜索] 腾讯失败:', e.message);
+                        }
+                    }
+                }
+            }
+
+            return results.slice(0, 10);
         }
 
-        // 显示搜索结果
+        // 显示搜索结果（自选盯盘专用）
         function showWatchlistSearchResults(results) {
             const resultsEl = document.getElementById('watchlistSearchResults');
             resultsEl.classList.remove('hidden');
-            resultsEl.innerHTML = results.map(s => `
+            
+            // 数据来源标签颜色
+            const sourceColors = {
+                'eastmoney': 'bg-red-100 text-red-600',
+                'tushare': 'bg-blue-100 text-blue-600',
+                'sina': 'bg-green-100 text-green-600',
+                'tencent': 'bg-purple-100 text-purple-600'
+            };
+            const sourceNames = {
+                'eastmoney': '东财',
+                'tushare': 'Tushare',
+                'sina': '新浪',
+                'tencent': '腾讯'
+            };
+            
+            if (results.length === 0) {
+                resultsEl.innerHTML = `<p class="p-2 text-gray-400 text-sm text-center">未找到匹配的股票</p>`;
+                return;
+            }
+            
+            resultsEl.innerHTML = results.map(s => {
+                const sourceTag = s._source ? 
+                    `<span class="ml-1 px-1 py-0.5 text-xs rounded ${sourceColors[s._source] || 'bg-gray-100 text-gray-600'}">${sourceNames[s._source] || s._source}</span>` : '';
+                return `
                 <div class="p-2 border-b border-gray-100 cursor-pointer hover:bg-blue-50 rounded flex justify-between items-center"
                      onclick="addStockToWatchlist({code:'${s.code}',name:'${s.name}'})">
-                    <span class="text-sm"><b>${s.code}</b> ${s.name}</span>
+                    <span class="text-sm"><b>${s.code}</b> ${s.name}${sourceTag}</span>
                     <span class="${s.changePercent >= 0 ? 'rise' : 'fall'} text-sm">${formatChange(s.changePercent || 0)}</span>
                 </div>
-            `).join('');
+            `}).join('');
         }
 
         // 添加股票到自选列表
@@ -4183,7 +4258,7 @@
             document.getElementById('searchModal').classList.add('hidden');
         }
 
-        // 搜索股票
+        // 搜索股票（混合数据源）
         async function searchStock(keyword) {
             if (!keyword || keyword.trim() === '') {
                 if (allStocksCache.length > 0) {
@@ -4193,17 +4268,20 @@
             }
 
             keyword = keyword.trim().toUpperCase();
+            const resultsEl = document.getElementById('searchResults');
+            resultsEl.innerHTML = `<p class="text-gray-400 text-center text-sm">搜索中...</p>`;
 
-            // 先从缓存搜索
+            // 1. 先从缓存搜索
             let results = allStocksCache.filter(s =>
                 s.code.includes(keyword) || s.name.includes(keyword)
             );
 
-            // 如果缓存没结果，尝试从API搜索
+            // 2. 如果缓存没结果，尝试从东方财富API搜索
             if (results.length === 0) {
+                console.log('[搜索] 尝试东方财富API...');
                 try {
                     const params = new URLSearchParams({
-                        pn: '1', pz: '20', po: '1', np: '1',
+                        pn: '1', pz: '50', po: '1', np: '1',
                         ut: 'fa5fd1943c7b386f172d6893dbfba10b', fltt: '2', invt: '2',
                         fs: 'm:0+t:6,m:1+t:2',
                         fields: 'f12,f14,f2,f3,f62,f66,f6,f8',
@@ -4227,14 +4305,177 @@
                                 inflowRatio: parseFloat(item.f66 ?? 0),
                                 volume: parseFloat(item.f6 ?? 0),
                                 turnoverRate: parseFloat(item.f8 ?? 0),
+                                _source: 'eastmoney'
                             }));
+                        console.log(`[搜索] 东方财富找到 ${results.length} 条`);
+                        recordSourceResult('eastmoney', true);
                     }
                 } catch (e) {
-                    console.error('搜索失败:', e);
+                    console.error('[搜索] 东方财富失败:', e.message);
+                    recordSourceResult('eastmoney', false);
                 }
             }
 
+            // 3. 如果东方财富也没结果，尝试Tushare搜索
+            if (results.length === 0 && TUSHARE_CONFIG.hasToken()) {
+                console.log('[搜索] 尝试Tushare API...');
+                try {
+                    const tushareResult = await searchFromTushare(keyword);
+                    if (tushareResult && tushareResult.length > 0) {
+                        results = tushareResult;
+                        console.log(`[搜索] Tushare找到 ${results.length} 条`);
+                        updateDataSourceStatus('tushare', 'active');
+                    }
+                } catch (e) {
+                    console.error('[搜索] Tushare失败:', e.message);
+                }
+            }
+
+            // 4. 如果Tushare也没结果，尝试新浪/腾讯实时数据
+            if (results.length === 0) {
+                console.log('[搜索] 尝试新浪/腾讯API...');
+                
+                // 尝试根据代码格式推断市场
+                let testCodes = [];
+                if (/^\d{6}$/.test(keyword)) {
+                    // 如果输入的是6位数字代码，构造完整代码
+                    if (keyword.startsWith('6')) {
+                        testCodes = [keyword];
+                    } else if (keyword.startsWith('0') || keyword.startsWith('3')) {
+                        testCodes = [keyword];
+                    }
+                }
+                
+                if (testCodes.length > 0) {
+                    // 尝试新浪
+                    try {
+                        const sinaData = await fetchSinaRealtimeData(testCodes);
+                        if (sinaData && sinaData.length > 0) {
+                            results = sinaData.map(s => ({
+                                code: s.code,
+                                name: s.name,
+                                price: s.price || 0,
+                                changePercent: s.changePercent || 0,
+                                mainInflow: 0,
+                                volume: s.amount || 0,
+                                turnoverRate: s.turnoverRate || 0,
+                                _source: 'sina'
+                            }));
+                            console.log(`[搜索] 新浪找到 ${results.length} 条`);
+                            recordSourceResult('sina', true);
+                        }
+                    } catch (e) {
+                        console.error('[搜索] 新浪失败:', e.message);
+                        recordSourceResult('sina', false);
+                    }
+
+                    // 如果新浪也没结果，尝试腾讯
+                    if (results.length === 0) {
+                        try {
+                            const tencentData = await fetchTencentRealtimeData(testCodes);
+                            if (tencentData && tencentData.length > 0) {
+                                results = tencentData.map(s => ({
+                                    code: s.code,
+                                    name: s.name,
+                                    price: s.price || 0,
+                                    changePercent: s.changePercent || 0,
+                                    mainInflow: 0,
+                                    volume: s.amount * 10000 || 0,
+                                    turnoverRate: s.turnoverRate || 0,
+                                    _source: 'tencent'
+                                }));
+                                console.log(`[搜索] 腾讯找到 ${results.length} 条`);
+                                recordSourceResult('tencent', true);
+                            }
+                        } catch (e) {
+                            console.error('[搜索] 腾讯失败:', e.message);
+                            recordSourceResult('tencent', false);
+                        }
+                    }
+                }
+            }
+
+            // 5. 如果所有数据源都没找到，显示未找到
+            if (results.length === 0) {
+                resultsEl.innerHTML = `
+                    <div class="text-center py-8">
+                        <p class="text-gray-400 text-sm mb-2">未找到匹配的股票</p>
+                        <p class="text-gray-300 text-xs">已尝试: 东方财富 → Tushare → 新浪 → 腾讯</p>
+                    </div>
+                `;
+                return;
+            }
+
             showSearchResults(filterOutGEM(results));
+        }
+
+        // Tushare股票搜索
+        async function searchFromTushare(keyword) {
+            try {
+                const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+                
+                // 尝试按代码搜索
+                if (/^\d{6}$/.test(keyword)) {
+                    const params = {
+                        ts_code: keyword.startsWith('6') ? `${keyword}.SH` : `${keyword}.SZ`,
+                        trade_date: today
+                    };
+                    
+                    const data = await fetchTushareData('daily', params);
+                    if (data && data.items && data.items.length > 0) {
+                        const fields = data.fields;
+                        const getValue = (item, name) => {
+                            const idx = fields.indexOf(name);
+                            return idx >= 0 ? item[idx] : 0;
+                        };
+                        
+                        return data.items.map(item => ({
+                            code: getValue(item, 'ts_code')?.split('.')[0] || keyword,
+                            name: '', // Tushare daily不返回名称
+                            price: getValue(item, 'close') || 0,
+                            changePercent: getValue(item, 'pct_chg') || 0,
+                            mainInflow: 0,
+                            volume: getValue(item, 'amount') * 10000 || 0,
+                            turnoverRate: 0,
+                            _source: 'tushare'
+                        }));
+                    }
+                }
+                
+                // 尝试获取股票基本信息
+                const basicParams = { list_status: 'L', exchange: '' };
+                const basicData = await fetchTushareData('stock_basic', basicParams);
+                
+                if (basicData && basicData.items && basicData.items.length > 0) {
+                    const fields = basicData.fields;
+                    const codeIdx = fields.indexOf('ts_code');
+                    const nameIdx = fields.indexOf('name');
+                    
+                    const matched = basicData.items.filter(item => {
+                        const code = codeIdx >= 0 ? (item[codeIdx] || '').replace(/\.(SH|SZ)$/, '') : '';
+                        const name = nameIdx >= 0 ? (item[nameIdx] || '') : '';
+                        return code.includes(keyword) || name.includes(keyword);
+                    });
+                    
+                    if (matched.length > 0) {
+                        return matched.slice(0, 10).map(item => ({
+                            code: (item[codeIdx] || '').replace(/\.(SH|SZ)$/, ''),
+                            name: item[nameIdx] || '',
+                            price: 0,
+                            changePercent: 0,
+                            mainInflow: 0,
+                            volume: 0,
+                            turnoverRate: 0,
+                            _source: 'tushare'
+                        }));
+                    }
+                }
+                
+                return [];
+            } catch (e) {
+                console.error('[Tushare搜索] 失败:', e.message);
+                return [];
+            }
         }
 
         // 显示搜索结果
@@ -4246,11 +4487,28 @@
                 return;
             }
 
-            resultsEl.innerHTML = stocks.map(stock => `
+            // 数据来源标签颜色
+            const sourceColors = {
+                'eastmoney': 'bg-red-100 text-red-600',
+                'tushare': 'bg-blue-100 text-blue-600',
+                'sina': 'bg-green-100 text-green-600',
+                'tencent': 'bg-purple-100 text-purple-600'
+            };
+            const sourceNames = {
+                'eastmoney': '东财',
+                'tushare': 'Tushare',
+                'sina': '新浪',
+                'tencent': '腾讯'
+            };
+
+            resultsEl.innerHTML = stocks.map(stock => {
+                const sourceTag = stock._source ? 
+                    `<span class="ml-2 px-1.5 py-0.5 text-xs rounded ${sourceColors[stock._source] || 'bg-gray-100 text-gray-600'}">${sourceNames[stock._source] || stock._source}</span>` : '';
+                return `
                 <div class="p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 rounded-lg" onclick="showStockDetail('${stock.code}'); closeSearchModal();">
                     <div class="flex items-center justify-between">
                         <div>
-                            <p class="font-semibold text-gray-900">${stock.code} ${stock.name}</p>
+                            <p class="font-semibold text-gray-900">${stock.code} ${stock.name}${sourceTag}</p>
                             <p class="text-sm text-gray-500">成交额: ${formatAmount(stock.volume)} | 换手: ${(stock.turnoverRate || 0).toFixed(2)}%</p>
                         </div>
                         <div class="text-right">
@@ -4259,7 +4517,7 @@
                         </div>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
         }
 
         // 显示股票详情
