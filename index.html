@@ -113,41 +113,6 @@
         <p class="text-xs text-amber-700">⭐ 添加自选股实时监控，检测异常动作（大额资金进出、快速拉升/下跌、放量异动等）及时提醒</p>
     </div>
 
-    <!-- 控制栏 - 两个独立监控开关 -->
-    <div class="bg-white px-4 py-3 border-b border-gray-200">
-        <div class="space-y-3">
-            <!-- 第一行：集合竞价监控 -->
-            <div class="flex items-center gap-3">
-                <div class="flex items-center gap-2 flex-1">
-                    <span class="text-sm font-medium text-gray-700">集合竞价</span>
-                    <span class="text-xs text-gray-400">(9:15-9:25)</span>
-                </div>
-                <button id="auctionMonitorBtn" onclick="toggleAuctionMonitor()" class="px-4 py-2 bg-blue-500 text-white rounded-lg font-medium text-sm">
-                    ▶ 开启
-                </button>
-            </div>
-            <!-- 第二行：开盘时间监控 -->
-            <div class="flex items-center gap-3">
-                <div class="flex items-center gap-2 flex-1">
-                    <span class="text-sm font-medium text-gray-700">开盘监控</span>
-                    <span class="text-xs text-gray-400">(9:30-15:00)</span>
-                </div>
-                <button id="tradingMonitorBtn" onclick="toggleTradingMonitor()" class="px-4 py-2 bg-blue-500 text-white rounded-lg font-medium text-sm">
-                    ▶ 开启
-                </button>
-            </div>
-            <!-- 第三行：刷新按钮 -->
-            <div class="flex items-center gap-3 pt-2 border-t border-gray-100">
-                <button id="refreshDataBtn" onclick="manualRefreshData()" class="flex-1 py-2 bg-blue-500 text-white rounded-lg font-medium text-sm flex items-center justify-center gap-2 hover:bg-blue-600 active:scale-95 transition-all">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                    </svg>
-                    <span>刷新数据</span>
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- 数据统计栏 -->
     <div id="statsBar" class="bg-white px-4 py-3 border-b border-gray-200 hidden">
         <div class="flex justify-around text-center">
@@ -483,11 +448,6 @@
             });
         }
 
-        // 手动刷新数据
-        function manualRefreshData() {
-            fetchStockData();
-        }
-
         // 手动刷新外盘数据
         function manualRefreshUsStock() {
             if (currentTab === 'usStock') {
@@ -522,7 +482,6 @@
 
         // 自动监控检测（每秒检查一次）
         let autoCheckInterval = null;
-        let lastAutoState = { auction: false, trading: false };
 
         function startAutoMonitor() {
             if (autoCheckInterval) return; // 避免重复启动
@@ -537,25 +496,17 @@
                 const shouldTradingMonitor = isTradingTime();
                 
                 // 自动开启/关闭集合竞价监控
-                if (shouldAuctionMonitor && !isAuctionMonitoring && !lastAutoState.auction) {
-                    console.log('自动开启集合竞价监控');
-                    lastAutoState.auction = true;
-                    toggleAuctionMonitor();
-                } else if (!shouldAuctionMonitor && isAuctionMonitoring && lastAutoState.auction) {
-                    console.log('自动关闭集合竞价监控');
-                    lastAutoState.auction = false;
-                    toggleAuctionMonitor();
+                if (shouldAuctionMonitor && !isAuctionMonitoring) {
+                    startAuctionMonitor();
+                } else if (!shouldAuctionMonitor && isAuctionMonitoring) {
+                    stopAuctionMonitor();
                 }
                 
                 // 自动开启/关闭开盘监控
-                if (shouldTradingMonitor && !isTradingMonitoring && !lastAutoState.trading) {
-                    console.log('自动开启开盘监控');
-                    lastAutoState.trading = true;
-                    toggleTradingMonitor();
-                } else if (!shouldTradingMonitor && isTradingMonitoring && lastAutoState.trading) {
-                    console.log('自动关闭开盘监控');
-                    lastAutoState.trading = false;
-                    toggleTradingMonitor();
+                if (shouldTradingMonitor && !isTradingMonitoring) {
+                    startTradingMonitor();
+                } else if (!shouldTradingMonitor && isTradingMonitoring) {
+                    stopTradingMonitor();
                 }
             }, 1000);
         }
@@ -2835,108 +2786,51 @@
             el.querySelector('p').textContent = '最后更新：' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
         }
 
-        // 切换监控状态
-        // 切换集合竞价监控
-        function toggleAuctionMonitor() {
-            const btn = document.getElementById('auctionMonitorBtn');
-            
-            if (isAuctionMonitoring) {
-                // 关闭集合竞价监控
-                isAuctionMonitoring = false;
-                btn.textContent = '▶ 开启';
-                btn.classList.remove('bg-red-500');
-                btn.classList.add('bg-blue-500');
-                if (auctionInterval) {
-                    clearInterval(auctionInterval);
-                    auctionInterval = null;
-                }
-            } else {
-                // 开启集合竞价监控
-                isAuctionMonitoring = true;
-                btn.textContent = '⏹ 停止';
-                btn.classList.remove('bg-blue-500');
-                btn.classList.add('bg-red-500');
-                
-                // 切换到集合竞价相关Tab并获取数据
+        // 兼容旧函数 - 已移除手动监控开关
+        
+        // 自动监控核心函数
+        function startAuctionMonitor() {
+            if (isAuctionMonitoring) return;
+            isAuctionMonitoring = true;
+            console.log('自动开启集合竞价监控');
+            fetchStockData();
+            auctionInterval = setInterval(() => {
                 if (currentTab === 'auction' || currentTab === 'highOpen' || currentTab === 'hotConcept') {
                     fetchStockData();
-                } else {
-                    switchTab('auction');
                 }
-                
-                // 集合竞价每5秒刷新一次
-                auctionInterval = setInterval(() => {
-                    if (currentTab === 'auction' || currentTab === 'highOpen' || currentTab === 'hotConcept') {
-                        fetchStockData();
-                    }
-                }, 5000);
-            }
-            
-            updateMonitorStatus();
+            }, 5000);
         }
-
-        // 切换开盘时间监控
-        function toggleTradingMonitor() {
-            const btn = document.getElementById('tradingMonitorBtn');
-            
-            if (isTradingMonitoring) {
-                // 关闭开盘监控
-                isTradingMonitoring = false;
-                btn.textContent = '▶ 开启';
-                btn.classList.remove('bg-red-500');
-                btn.classList.add('bg-blue-500');
-                if (tradingInterval) {
-                    clearInterval(tradingInterval);
-                    tradingInterval = null;
-                }
-            } else {
-                // 开启开盘监控
-                isTradingMonitoring = true;
-                btn.textContent = '⏹ 停止';
-                btn.classList.remove('bg-blue-500');
-                btn.classList.add('bg-red-500');
-                
-                // 切换到开盘相关Tab并获取数据
-                if (['realtime', 'overnight', 'institution', 'alert'].includes(currentTab)) {
+        
+        function stopAuctionMonitor() {
+            if (!isAuctionMonitoring) return;
+            isAuctionMonitoring = false;
+            console.log('自动关闭集合竞价监控');
+            if (auctionInterval) {
+                clearInterval(auctionInterval);
+                auctionInterval = null;
+            }
+        }
+        
+        function startTradingMonitor() {
+            if (isTradingMonitoring) return;
+            isTradingMonitoring = true;
+            console.log('自动开启开盘监控');
+            fetchStockData();
+            tradingInterval = setInterval(() => {
+                if (['realtime', 'overnight', 'institution', 'alert', 'watchlist', 'lateTrading'].includes(currentTab)) {
                     fetchStockData();
-                } else {
-                    switchTab('realtime');
                 }
-                
-                // 开盘时间每3秒刷新一次
-                tradingInterval = setInterval(() => {
-                    if (['realtime', 'overnight', 'institution', 'alert', 'watchlist', 'lateTrading'].includes(currentTab)) {
-                        fetchStockData();
-                    }
-                }, 3000);
-            }
-            
-            updateMonitorStatus();
+            }, 3000);
         }
-
-        // 更新监控状态显示
-        function updateMonitorStatus() {
-            const badge = document.getElementById('statusBadge');
-            const statusText = badge.querySelector('span');
-            
-            if (isAuctionMonitoring && isTradingMonitoring) {
-                badge.className = 'px-3 py-1 rounded-full bg-green-500';
-                statusText.textContent = '全部监控中';
-            } else if (isAuctionMonitoring) {
-                badge.className = 'px-3 py-1 rounded-full bg-orange-500';
-                statusText.textContent = '竞价监控中';
-            } else if (isTradingMonitoring) {
-                badge.className = 'px-3 py-1 rounded-full bg-blue-500';
-                statusText.textContent = '开盘监控中';
-            } else {
-                badge.className = 'px-3 py-1 rounded-full bg-gray-400';
-                statusText.textContent = '未监控';
+        
+        function stopTradingMonitor() {
+            if (!isTradingMonitoring) return;
+            isTradingMonitoring = false;
+            console.log('自动关闭开盘监控');
+            if (tradingInterval) {
+                clearInterval(tradingInterval);
+                tradingInterval = null;
             }
-        }
-
-        // 兼容旧函数
-        function toggleMonitoring() {
-            toggleAuctionMonitor();
         }
 
         // 点击弹窗外部关闭
